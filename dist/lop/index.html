@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="googlebot" content="noindex, nofollow" />
+    <title>SnowBear Admin</title>
+    <link rel="stylesheet" href="/lop/styles.css?v=13" />
+  </head>
+  <body>
+    <div id="gate" class="gate-wrap">
+      <div class="gate-card">
+        <div class="gate-logo">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke="#6EC6FF" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="12" cy="12" r="4" fill="#6EC6FF" opacity=".25"/>
+            <circle cx="12" cy="12" r="2" fill="#6EC6FF"/>
+          </svg>
+        </div>
+        <h1>SnowBear Admin</h1>
+        <input id="gate-password" type="password" placeholder="Admin password" autocomplete="current-password" />
+        <button id="gate-btn" class="btn btn-primary">Access</button>
+        <p id="gate-error" class="err"></p>
+      </div>
+    </div>
+
+    <div id="app" class="shell hidden">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke="#6EC6FF" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="12" cy="12" r="3" fill="#6EC6FF"/>
+            </svg>
+          </span>
+          <span class="brand-text">SnowBear</span>
+        </div>
+        <nav class="nav" id="nav"></nav>
+        <div class="sidebar-foot">
+          <button type="button" id="leave-btn" class="leave-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Leave admin
+          </button>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="topbar" id="topbar"></header>
+        <div class="workspace-body" id="workspace-body">
+          <main class="main" id="main"></main>
+          <aside class="right-panel hidden" id="right-panel"></aside>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal-root"></div>
+
+    <script src="/lop/config.js?v=13"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+    <script src="/lop/app.js?v=13"></script>
+  </body>
+</html>
