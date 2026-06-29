@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+# Admin is not indexed — access via direct URL only
+Disallow: /lop
+Disallow: /lop/

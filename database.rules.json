@@ -1,0 +1,70 @@
+{
+  "rules": {
+    "config": {
+      ".read": "auth != null",
+      "paymentInstructions": {
+        ".write": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true"
+      },
+      "bulkActivateV1": {
+        ".read": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true",
+        ".write": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true"
+      },
+      "bulkActivateV2": {
+        ".read": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true",
+        ".write": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true"
+      },
+      "adminEmails": {
+        ".read": "auth != null",
+        "$emailKey": {
+          ".write": "auth != null && newData.val() == true && auth.token.email != null && auth.token.email.replace('.', ',') == $emailKey"
+        }
+      }
+    },
+    "users": {
+      ".read": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true",
+      "$uid": {
+        ".read": "auth != null && (auth.uid == $uid || root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true)",
+        ".write": "auth != null && (auth.uid == $uid || root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true)",
+        "credits": {
+          ".validate": "newData.hasChildren(['month', 'used', 'purchased'])"
+        }
+      }
+    },
+    "orders": {
+      ".read": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true",
+      ".indexOn": ["createdAt", "status"],
+      "$orderId": {
+        ".read": "auth != null && (data.child('uid').val() == auth.uid || root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true)",
+        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() == auth.uid && newData.child('status').val() == 'pending') || root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true)"
+      }
+    },
+    "promoCodes": {
+      ".read": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true",
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true || (data.child('active').val() !== false && (data.child('usedByUid').val() == null || !data.hasChild('usedByUid')) && newData.child('usedByUid').val() == auth.uid && newData.child('active').val() == false))"
+      }
+    },
+    "referralCodes": {
+      ".read": "auth != null",
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true"
+      }
+    },
+    "referralClaims": {
+      ".read": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true",
+      "$uid": {
+        ".read": "auth != null && (auth.uid == $uid || root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true)",
+        ".write": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true"
+      }
+    },
+    "referralPurchaseRewards": {
+      ".read": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true",
+      "$rewardId": {
+        ".read": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true",
+        ".write": "auth != null && root.child('config/adminEmails').child(auth.token.email.replace('.', ',')).val() == true"
+      }
+    }
+  }
+}

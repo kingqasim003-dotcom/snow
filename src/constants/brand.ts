@@ -1,0 +1,1 @@
+export const POLAR_BEAR_LOGO_URL = "/polar-bear-logo.png";

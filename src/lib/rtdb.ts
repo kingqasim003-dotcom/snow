@@ -1,0 +1,1 @@
+export { rtdb, monthKey } from "./firebase";

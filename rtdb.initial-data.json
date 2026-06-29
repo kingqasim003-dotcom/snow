@@ -1,0 +1,21 @@
+{
+  "config": {
+    "adminEmails": {
+      "REPLACE_WITH_your@gmail,com": true
+    },
+    "paymentInstructions": {
+      "bank": {
+        "title": "Pay with Bank",
+        "details": "Transfer the exact amount to:\nBank: Your Bank Name\nAccount Title: SnowBear AI\nAccount #: YOUR-ACCOUNT\nIBAN: YOUR-IBAN\n\nAfter payment, enter your bank transaction reference below."
+      },
+      "crypto": {
+        "title": "Pay with Crypto",
+        "details": "Send USDT (TRC20) to:\nWallet: YOUR_WALLET_ADDRESS\nNetwork: TRON (TRC20)\n\nPaste your transaction hash below."
+      },
+      "jazzcash": {
+        "title": "Pay with JazzCash",
+        "details": "Send payment via JazzCash to:\nNumber: 03XX-XXXXXXX\nAccount Title: SnowBear AI\n\nEnter your JazzCash transaction ID below."
+      }
+    }
+  }
+}
