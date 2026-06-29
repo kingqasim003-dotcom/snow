@@ -23,10 +23,14 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // server.ts
 var import_dotenv = __toESM(require("dotenv"), 1);
+var import_fs3 = __toESM(require("fs"), 1);
+var import_path3 = __toESM(require("path"), 1);
+var import_vite = require("vite");
+
+// server/app.ts
 var import_fs2 = __toESM(require("fs"), 1);
 var import_express = __toESM(require("express"), 1);
 var import_path2 = __toESM(require("path"), 1);
-var import_vite = require("vite");
 
 // server/adminConfig.ts
 function buildAdminConfigScript() {
@@ -290,9 +294,9 @@ async function getAdminToken() {
   };
   return adminTokenCache.token;
 }
-async function rtdbRequest(method, path3, token, body) {
+async function rtdbRequest(method, path4, token, body) {
   const { databaseUrl } = serverConfig();
-  const res = await fetch(`${databaseUrl}/${path3}.json?auth=${encodeURIComponent(token)}`, {
+  const res = await fetch(`${databaseUrl}/${path4}.json?auth=${encodeURIComponent(token)}`, {
     method,
     headers: body !== void 0 ? { "Content-Type": "application/json" } : void 0,
     body: body !== void 0 ? JSON.stringify(body) : void 0
@@ -603,7 +607,11 @@ function getAllowedOrigins() {
     return configured.split(",").map((origin) => origin.trim()).filter(Boolean);
   }
   if (process.env.NODE_ENV === "production") {
-    return ["https://snowbear.online", "https://www.snowbear.online"];
+    return [
+      "https://snowbear.online",
+      "https://www.snowbear.online",
+      "https://snow-tau-ten.vercel.app"
+    ];
   }
   return ["http://localhost:3000", "http://127.0.0.1:3000"];
 }
@@ -690,9 +698,7 @@ function safeClientError(err) {
   return "Request failed. Please try again later.";
 }
 
-// server.ts
-import_dotenv.default.config({ path: ".env.local" });
-import_dotenv.default.config();
+// server/app.ts
 function resolveAdminPanelDir() {
   const candidates = [
     import_path2.default.join(process.cwd(), "admin-panel"),
@@ -703,11 +709,10 @@ function resolveAdminPanelDir() {
   }
   return import_path2.default.join(process.cwd(), "admin-panel");
 }
-async function startServer() {
+function createApp(options = {}) {
+  const { serveSpa = false } = options;
   const app = (0, import_express.default)();
-  const PORT = Number(process.env.PORT) || 3e3;
   const isProd = process.env.NODE_ENV === "production";
-  const HOST = process.env.HOST || (isProd ? "0.0.0.0" : "127.0.0.1");
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use(securityHeaders);
@@ -722,7 +727,10 @@ async function startServer() {
         return res.status(400).json({ error: "Choose a receipt image to upload." });
       }
       try {
-        const url = await uploadImageToImgbb(image, typeof req.body?.name === "string" ? req.body.name : void 0);
+        const url = await uploadImageToImgbb(
+          image,
+          typeof req.body?.name === "string" ? req.body.name : void 0
+        );
         res.json({ ok: true, url });
       } catch (err) {
         console.error("Receipt upload error:", err);
@@ -735,8 +743,11 @@ async function startServer() {
   );
   app.use(import_express.default.json({ limit: "32kb" }));
   app.use("/api", createRateLimiter(60, 6e4));
-  app.use(["/api/enhance", "/api/compress", "/api/grammar", "/api/score"], createRateLimiter(15, 6e4));
-  app.get("/api/health", (req, res) => {
+  app.use(
+    ["/api/enhance", "/api/compress", "/api/grammar", "/api/score"],
+    createRateLimiter(15, 6e4)
+  );
+  app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", time: (/* @__PURE__ */ new Date()).toISOString() });
   });
   app.post("/api/enhance", async (req, res) => {
@@ -936,15 +947,7 @@ ${prompt}`,
   app.get("/lop", (_req, res) => {
     res.redirect(301, "/lop/");
   });
-  if (!isProd) {
-    console.log("Setting up Vite in middleware mode...");
-    const vite = await (0, import_vite.createServer)({
-      server: { middlewareMode: true },
-      appType: "spa"
-    });
-    app.use(vite.middlewares);
-  } else {
-    console.log("Serving production static assets from /dist...");
+  if (serveSpa) {
     const distPath = import_path2.default.join(process.cwd(), "dist");
     app.use(import_express.default.static(import_path2.default.join(process.cwd(), "public")));
     app.use("/src/assets", import_express.default.static(import_path2.default.join(process.cwd(), "src/assets")));
@@ -957,9 +960,33 @@ ${prompt}`,
       res.sendFile(import_path2.default.join(distPath, "index.html"));
     });
   }
+  return app;
+}
+
+// server.ts
+import_dotenv.default.config({ path: ".env.local" });
+import_dotenv.default.config();
+async function startServer() {
+  const PORT = Number(process.env.PORT) || 3e3;
+  const isProd = process.env.NODE_ENV === "production";
+  const HOST = process.env.HOST || (isProd ? "0.0.0.0" : "127.0.0.1");
+  const app = createApp({ serveSpa: isProd });
+  if (!isProd) {
+    console.log("Setting up Vite in middleware mode...");
+    const vite = await (0, import_vite.createServer)({
+      server: { middlewareMode: true },
+      appType: "spa"
+    });
+    app.use(vite.middlewares);
+  } else {
+    console.log("Serving production static assets from /dist...");
+  }
+  const adminPanelDir = [import_path3.default.join(process.cwd(), "admin-panel"), import_path3.default.join(process.cwd(), "dist", "admin-panel")].find(
+    (dir) => import_fs3.default.existsSync(import_path3.default.join(dir, "index.html"))
+  );
   app.listen(PORT, HOST, () => {
     console.log(`SnowBear server running on http://${HOST}:${PORT}`);
-    if (import_fs2.default.existsSync(import_path2.default.join(adminPanelDir, "index.html"))) {
+    if (adminPanelDir) {
       console.log(`Admin panel: http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}/lop/`);
     }
   });

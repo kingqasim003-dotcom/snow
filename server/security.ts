@@ -11,7 +11,11 @@ export function getAllowedOrigins(): string[] {
     return configured.split(",").map((origin) => origin.trim()).filter(Boolean);
   }
   if (process.env.NODE_ENV === "production") {
-    return ["https://snowbear.online", "https://www.snowbear.online"];
+    return [
+      "https://snowbear.online",
+      "https://www.snowbear.online",
+      "https://snow-tau-ten.vercel.app",
+    ];
   }
   return ["http://localhost:3000", "http://127.0.0.1:3000"];
 }
