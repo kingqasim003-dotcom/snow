@@ -1,6 +1,9 @@
 export function serverConfig() {
   return {
-    apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "",
+    apiKey:
+      process.env.FIREBASE_API_KEY ||
+      process.env.VITE_FIREBASE_API_KEY ||
+      "AIzaSyCSlC-QUUXIdqk-E--83KdX84-1AKtOJiA",
     databaseUrl: (
       process.env.FIREBASE_DATABASE_URL ||
       process.env.VITE_FIREBASE_DATABASE_URL ||

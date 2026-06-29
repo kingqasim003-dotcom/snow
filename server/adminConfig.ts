@@ -6,12 +6,21 @@ export function buildAdminConfigScript(): string {
     "https://snowbear-online-default-rtdb.asia-southeast1.firebasedatabase.app";
 
   const firebase = {
-    apiKey: process.env.VITE_FIREBASE_API_KEY || "",
-    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || "",
-    projectId: process.env.VITE_FIREBASE_PROJECT_ID || "",
-    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || "",
-    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-    appId: process.env.VITE_FIREBASE_APP_ID || "",
+    apiKey:
+      process.env.VITE_FIREBASE_API_KEY ||
+      process.env.FIREBASE_API_KEY ||
+      "AIzaSyCSlC-QUUXIdqk-E--83KdX84-1AKtOJiA",
+    authDomain:
+      process.env.VITE_FIREBASE_AUTH_DOMAIN || "snowbear-online.firebaseapp.com",
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || "snowbear-online",
+    storageBucket:
+      process.env.VITE_FIREBASE_STORAGE_BUCKET ||
+      "snowbear-online.firebasestorage.app",
+    messagingSenderId:
+      process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "420360574036",
+    appId:
+      process.env.VITE_FIREBASE_APP_ID ||
+      "1:420360574036:web:ed69dd7212199b22ca09c1",
     databaseURL,
   };
 

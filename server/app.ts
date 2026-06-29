@@ -1,5 +1,5 @@
 import fs from "fs";
-import express, { type Express } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import path from "path";
 import { buildAdminConfigScript } from "./adminConfig";
 import { callGroqChatCompletion } from "./groq";
@@ -333,6 +333,15 @@ export function createApp(options: { serveSpa?: boolean } = {}): Express {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    console.error("Unhandled server error:", err);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Internal server error.",
+      });
+    }
+  });
 
   return app;
 }

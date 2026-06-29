@@ -36,12 +36,12 @@ var import_path2 = __toESM(require("path"), 1);
 function buildAdminConfigScript() {
   const databaseURL = process.env.VITE_FIREBASE_DATABASE_URL || process.env.FIREBASE_DATABASE_URL || "https://snowbear-online-default-rtdb.asia-southeast1.firebasedatabase.app";
   const firebase = {
-    apiKey: process.env.VITE_FIREBASE_API_KEY || "",
-    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || "",
-    projectId: process.env.VITE_FIREBASE_PROJECT_ID || "",
-    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || "",
-    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
-    appId: process.env.VITE_FIREBASE_APP_ID || "",
+    apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY || "AIzaSyCSlC-QUUXIdqk-E--83KdX84-1AKtOJiA",
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || "snowbear-online.firebaseapp.com",
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || "snowbear-online",
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || "snowbear-online.firebasestorage.app",
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "420360574036",
+    appId: process.env.VITE_FIREBASE_APP_ID || "1:420360574036:web:ed69dd7212199b22ca09c1",
     databaseURL
   };
   const adminEmail = process.env.ADMIN_EMAIL?.trim() || "";
@@ -241,7 +241,7 @@ function buildExtensionZip(originUrl) {
 // server/firebaseAdmin.ts
 function serverConfig() {
   return {
-    apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "",
+    apiKey: process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || "AIzaSyCSlC-QUUXIdqk-E--83KdX84-1AKtOJiA",
     databaseUrl: (process.env.FIREBASE_DATABASE_URL || process.env.VITE_FIREBASE_DATABASE_URL || "").replace(/\/$/, ""),
     adminEmail: process.env.ADMIN_EMAIL || process.env.FIREBASE_ADMIN_EMAIL || "snowqasimbear@gmail.com",
     adminPassword: process.env.ADMIN_PASSWORD || process.env.FIREBASE_ADMIN_PASSWORD || ""
@@ -960,6 +960,14 @@ ${prompt}`,
       res.sendFile(import_path2.default.join(distPath, "index.html"));
     });
   }
+  app.use((err, _req, res, _next) => {
+    console.error("Unhandled server error:", err);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Internal server error."
+      });
+    }
+  });
   return app;
 }
 
