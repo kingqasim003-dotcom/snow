@@ -1,0 +1,10 @@
+{
+  "name": "snowbear-static",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "adm-zip": "^0.5.17",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2"
+  }
+}

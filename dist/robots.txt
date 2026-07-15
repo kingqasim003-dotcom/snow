@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://www.snowbear.online/sitemap.xml
+
+# Admin is not indexed — access via direct URL only
+Disallow: /lop
+Disallow: /lop/

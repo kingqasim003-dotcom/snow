@@ -1,0 +1,25 @@
+{
+  "installCommand": "npm install --omit=dev",
+  "buildCommand": "echo skip",
+  "outputDirectory": "dist",
+  "framework": null,
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "dist/lop/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api"
+    },
+    {
+      "source": "/lop",
+      "destination": "/lop/index.html"
+    },
+    {
+      "source": "/((?!api/|assets/|lop/|lop$|polar-bear|robots\\.txt|sitemap\\.xml|googled78b9c1a3f72a025\\.html|snowbear-chrome-extension\\.zip).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

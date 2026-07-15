@@ -1,0 +1,21 @@
+module.exports = {
+  "NODE_ENV": "development",
+  "GROQ_API_KEYS_B64": "Z3NrX29vWlk1eHBORUpES0I0T2tGU25uV0dkeWIzRllsUHNvVmNiRDNhbXNNTVdmcEtBdjExMlIsZ3NrX0pPclVUZVFjczhyRzFqVGluZTVBV0dkeWIzRllPNFlZNnI2c0wyS1pwYlcyaXVYVXFEc3UsZ3NrX1N6dzVBdmVib1Nka0l6WGFMbHRHV0dkeWIzRll2YTFNQlM3SlhHd3JSNk82MTJUZ2FPa0YsZ3NrXzJ4bFMyMDZhalY0djV6OHB4VlRJV0dkeWIzRllnRzZ1bXU5WFhaTEJsb21ZNjZaRzZMUDAsZ3NrX0FBd1R3NFZFQVg3TWh0NTJadDdzV0dkeWIzRllXZ0dDZ1NWYmFsaDhBVW1GQTN3ejBXOGcsZ3NrXzdWTzJmcjdXQUgyUzhHS0JMWlF2V0dkeWIzRlk4Z2tJVVJQSWMzd2owR2Z0UlRLdkxQVnU=",
+  "GROQ_MODEL": "llama-3.1-8b-instant",
+  "IMGBB_API_KEY_B64": "OTdhZTZjMTQ5ZTE4Nzg0MTZmMWM2ZjgwMzk5NjBiMjI=",
+  "ADMIN_GATE_PASSWORD_B64": "U25vd3Fhc2ltYmVhcg==",
+  "ADMIN_PASSWORD_B64": "U25vd2JlYXIwaW8=",
+  "ADMIN_EMAIL": "snowqasimbear@gmail.com",
+  "SITE_URL": "https://www.snowbear.online",
+  "ALLOWED_ORIGINS": "http://localhost:3000,http://127.0.0.1:3000,https://snowbear.online,https://www.snowbear.online",
+  "VITE_FIREBASE_API_KEY": "AIzaSyCSlC-QUUXIdqk-E--83KdX84-1AKtOJiA",
+  "VITE_FIREBASE_AUTH_DOMAIN": "snowbear-online.firebaseapp.com",
+  "VITE_FIREBASE_PROJECT_ID": "snowbear-online",
+  "VITE_FIREBASE_STORAGE_BUCKET": "snowbear-online.firebasestorage.app",
+  "VITE_FIREBASE_MESSAGING_SENDER_ID": "420360574036",
+  "VITE_FIREBASE_APP_ID": "1:420360574036:web:ed69dd7212199b22ca09c1",
+  "VITE_FIREBASE_MEASUREMENT_ID": "G-TXSH91974E",
+  "VITE_FIREBASE_DATABASE_URL": "https://snowbear-online-default-rtdb.asia-southeast1.firebasedatabase.app",
+  "FIREBASE_API_KEY": "AIzaSyCSlC-QUUXIdqk-E--83KdX84-1AKtOJiA",
+  "FIREBASE_DATABASE_URL": "https://snowbear-online-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
