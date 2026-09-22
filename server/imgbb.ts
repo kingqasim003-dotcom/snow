@@ -1,5 +1,8 @@
 function imgbbApiKey(): string {
-  return process.env.IMGBB_API_KEY || "";
+  if (process.env.IMGBB_API_KEY?.trim()) return process.env.IMGBB_API_KEY.trim();
+  const encoded = process.env.IMGBB_API_KEY_B64?.trim();
+  if (!encoded) return "";
+  return Buffer.from(encoded, "base64").toString("utf8");
 }
 
 export async function uploadImageToImgbb(base64OrDataUrl: string, name?: string): Promise<string> {

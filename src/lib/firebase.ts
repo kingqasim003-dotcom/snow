@@ -4,6 +4,7 @@ import {
   browserPopupRedirectResolver,
   getAuth,
   initializeAuth,
+  setPersistence,
   type Auth,
 } from "firebase/auth";
 import { getDatabase, type Database } from "firebase/database";
@@ -51,6 +52,12 @@ export const auth: Auth = isNewApp
       popupRedirectResolver: browserPopupRedirectResolver,
     })
   : getAuth(app);
+
+if (!isNewApp) {
+  void setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.warn("Firebase auth persistence:", err);
+  });
+}
 
 export const rtdb: Database = getDatabase(app);
 

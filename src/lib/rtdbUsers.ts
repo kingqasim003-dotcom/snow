@@ -345,12 +345,15 @@ export async function adminApplyUserPlan(
   if (plan === "free") {
     patch.planExpiresAt = null;
     patch.planBillingCycle = null;
+    patch.planActivatedAt = null;
   } else if (options?.billingCycle) {
     patch.planExpiresAt = planExpiresAtFromBilling(options.billingCycle, now);
     patch.planBillingCycle = options.billingCycle;
+    patch.planActivatedAt = now;
   } else {
     patch.planExpiresAt = null;
     patch.planBillingCycle = null;
+    patch.planActivatedAt = null;
   }
 
   await update(ref(rtdb, `users/${uid}`), patch);

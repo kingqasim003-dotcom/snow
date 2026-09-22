@@ -21,10 +21,13 @@ import {
   listenUserPlan,
   fetchUserPlan,
 } from "./lib/rtdbUsers";
+import { loadSavedProfile, saveProfile } from "./lib/authSession";
 import { UserProfile, PromptItem } from "./types";
+import { listenPricing } from "./lib/rtdbConfig";
+import { updatePlanPacksPrices } from "./data/planPacks";
 
 function AppContent() {
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, loading: authLoading } = useAuth();
 
   const getIdToken = useCallback(async () => {
     if (!firebaseUser) return null;
@@ -32,33 +35,53 @@ function AppContent() {
   }, [firebaseUser]);
 
   const [user, setUser] = useState<UserProfile>(() => {
-    try {
-      const saved = localStorage.getItem("snowbear_profile");
-      if (saved) return JSON.parse(saved);
-    } catch { /* fall through */ }
-    return { id: "", email: "", plan: "free" };
+    return loadSavedProfile() || { id: "", email: "", plan: "free" };
   });
 
   const [historyList, setHistoryList] = useState<PromptItem[]>([]);
 
   useEffect(() => {
+    const unsub = listenPricing((pricing) => {
+      updatePlanPacksPrices(pricing);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+
     if (firebaseUser) {
       setUser((prev) => {
+        const saved = loadSavedProfile();
         const next = {
-          ...prev,
+          ...(saved?.id === firebaseUser.uid ? saved : prev),
           id: firebaseUser.uid,
-          email: firebaseUser.email || "",
-          plan: prev.id === firebaseUser.uid ? prev.plan : "free",
+          email: firebaseUser.email || saved?.email || prev.email || "",
+          plan:
+            prev.id === firebaseUser.uid
+              ? prev.plan
+              : saved?.id === firebaseUser.uid
+                ? saved.plan
+                : "free",
         };
         firebaseUser.getIdToken().then((token) => publishExtensionSync(next, token)).catch(() => publishExtensionSync(next));
         return next;
       });
-    } else {
+      return;
+    }
+
+    setUser({ id: "", email: "", plan: "free" });
+    setHistoryList([]);
+  }, [firebaseUser, authLoading]);
+
+  useEffect(() => {
+    const onSignedOut = () => {
       setUser({ id: "", email: "", plan: "free" });
       setHistoryList([]);
-      localStorage.removeItem("snowbear_extension_sync");
-    }
-  }, [firebaseUser]);
+    };
+    window.addEventListener("snowbear-signed-out", onSignedOut);
+    return () => window.removeEventListener("snowbear-signed-out", onSignedOut);
+  }, []);
 
   useEffect(() => {
     if (!user.id) {
@@ -70,7 +93,7 @@ function AppContent() {
 
   useEffect(() => {
     if (!user.id && !user.email) return;
-    localStorage.setItem("snowbear_profile", JSON.stringify(user));
+    saveProfile(user);
     if (user.id) {
       if (firebaseUser) {
         firebaseUser.getIdToken().then((token) => publishExtensionSync(user, token)).catch(() => publishExtensionSync(user));

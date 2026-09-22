@@ -1,4 +1,4 @@
-/** Builds runtime config for /lop — credentials come from env, never committed. */
+/** Builds public runtime config for /lop — passwords stay server-side only. */
 export function buildAdminConfigScript(): string {
   const databaseURL =
     process.env.VITE_FIREBASE_DATABASE_URL ||
@@ -25,15 +25,11 @@ export function buildAdminConfigScript(): string {
   };
 
   const adminEmail = process.env.ADMIN_EMAIL?.trim() || "";
-  const gatePassword = process.env.ADMIN_GATE_PASSWORD?.trim() || "";
-  const adminPassword = process.env.ADMIN_PASSWORD?.trim() || "";
 
   const missing: string[] = [];
   if (!firebase.apiKey) missing.push("VITE_FIREBASE_API_KEY");
   if (!firebase.databaseURL) missing.push("VITE_FIREBASE_DATABASE_URL");
   if (!adminEmail) missing.push("ADMIN_EMAIL");
-  if (!gatePassword) missing.push("ADMIN_GATE_PASSWORD");
-  if (!adminPassword) missing.push("ADMIN_PASSWORD");
 
   if (missing.length) {
     const list = missing.join(", ");
@@ -45,12 +41,7 @@ document.addEventListener("DOMContentLoaded", function () {
 });`;
   }
 
-  const payload = {
-    firebase,
-    adminEmail,
-    gatePassword,
-    adminPassword,
-  };
+  const payload = { firebase, adminEmail };
 
   return `window.SNOWBEAR_ADMIN_CONFIG = ${JSON.stringify(payload)};`;
 }

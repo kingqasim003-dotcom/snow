@@ -1,7 +1,5 @@
-import { mergeCreditsRecords, setCreditsRecord, getCreditsRecord } from "./credits";
 import { mergeHistoryLists, saveUserHistory, getUserHistory } from "./history";
 import { publishExtensionSync, writeExtensionSyncPayload, type ExtensionSyncPayload } from "./extensionSync";
-import { syncCreditsToRtdb } from "./rtdbUsers";
 import type { PromptItem, UserProfile } from "../types";
 
 export interface ExtensionStatePayload {
@@ -29,28 +27,7 @@ export function applyExtensionStateToWebsite(
   let changed = false;
   let nextUser = { ...currentUser };
 
-  // Plan comes from RTDB (admin / checkout) — ignore extension-local plan.
-
-  if (state.credits) {
-    const current = getCreditsRecord(currentUser.id);
-    const month = new Date().toISOString().slice(0, 7);
-    const remote = state.credits;
-    const remoteNorm =
-      remote.month === month ? remote : { month, used: 0, purchased: remote.purchased || 0 };
-    const merged = {
-      month: current.month === month ? current.month : month,
-      used: Math.max(current.used, remoteNorm.used || 0),
-      purchased: current.purchased,
-    };
-    if (
-      merged.used !== current.used ||
-      merged.purchased !== current.purchased ||
-      merged.month !== current.month
-    ) {
-      setCreditsRecord(currentUser.id, merged);
-      changed = true;
-    }
-  }
+  // Plan and credits come from RTDB listeners — extension only syncs history/email here.
 
   let history = getUserHistory(currentUser.id);
   if (state.history?.length) {
@@ -69,9 +46,6 @@ export function applyExtensionStateToWebsite(
 
   if (changed) {
     publishExtensionSync(nextUser);
-    if (state.credits && currentUser.id) {
-      syncCreditsToRtdb(currentUser.id, getCreditsRecord(currentUser.id)).catch(console.error);
-    }
   }
 
   return { user: nextUser, history, changed };

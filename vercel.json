@@ -1,9 +1,23 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "crons": [
+    { "path": "/api/admin/health-cron?slot=morning", "schedule": "0 1 * * *" },
+    { "path": "/api/admin/health-cron?slot=midday", "schedule": "0 9 * * *" },
+    { "path": "/api/admin/health-cron?slot=night", "schedule": "0 17 * * *" },
+    { "path": "/api/admin/plan-cron", "schedule": "0 * * * *" }
+  ],
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "{admin-panel/**,dist/admin-panel/**}"
+    }
+  },
   "rewrites": [
+    { "source": "/api/:path*", "destination": "/api" },
+    { "source": "/lop/:path*", "destination": "/api" },
+    { "source": "/lop", "destination": "/api" },
     {
-      "source": "/((?!api/|lop/|lop$|assets/|polar-bear|robots\\.txt|admin-panel/).*)",
+      "source": "/((?!api/|lop/|lop$|assets/|polar-bear|robots\\.txt|sitemap\\.xml|googled78b9c1a3f72a025\\.html|snowbear-chrome-extension\\.zip|admin-panel/).*)",
       "destination": "/index.html"
     }
   ]

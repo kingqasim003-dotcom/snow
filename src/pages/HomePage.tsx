@@ -12,6 +12,8 @@ interface HomePageProps {
   onDeleteHistoryItem: (id: string) => void;
 }
 
+import { usePageMeta } from "../hooks/usePageMeta";
+
 export default function HomePage({
   user,
   onSaveHistory,
@@ -19,6 +21,12 @@ export default function HomePage({
   onClearHistory,
   onDeleteHistoryItem,
 }: HomePageProps) {
+  usePageMeta({
+    title: "SnowBear | The Grammarly for AI Prompts | Optimize ChatGPT & Claude",
+    description: "Write better AI prompts and save up to 50% on token fees with SnowBear. The ultimate AI prompt optimizer Chrome extension for ChatGPT, Claude, and Gemini.",
+    path: "/",
+  });
+
   const handleDownloadZip = () => {
     const origin = window.location.origin;
     window.location.href = `/api/download-extension?origin=${encodeURIComponent(origin)}`;

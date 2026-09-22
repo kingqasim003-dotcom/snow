@@ -1,5 +1,6 @@
 import { type Dispatch, type SetStateAction } from "react";
 import { Link } from "react-router-dom";
+import { downloadExtensionZip, EXTENSION_VERSION } from "../lib/extensionDownload";
 import { RefreshCw, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import CreditsPanel from "../components/CreditsPanel";
 import BuyCreditsSection from "../components/BuyCreditsSection";
@@ -49,7 +50,15 @@ function SyncBadge({ status, lastSyncAt }: { status: string; lastSyncAt: number 
   );
 }
 
+import { usePageMeta } from "../hooks/usePageMeta";
+
 export default function CreditsPage({ user, setUser }: CreditsPageProps) {
+  usePageMeta({
+    title: "Account Credits | SnowBear",
+    description: "Manage your SnowBear credits, view usage limits, and sync with the Chrome extension.",
+    path: "/credits",
+  });
+
   const { syncStatus, lastSyncAt, forceSync } = useExtensionSyncState();
 
   return (
@@ -90,13 +99,10 @@ export default function CreditsPage({ user, setUser }: CreditsPageProps) {
           <div className="flex flex-wrap justify-center gap-3">
             <button
               type="button"
-              onClick={() => {
-                const origin = window.location.origin;
-                window.location.href = `/api/download-extension?origin=${encodeURIComponent(origin)}`;
-              }}
+              onClick={downloadExtensionZip}
               className="bg-[#6EC6FF] hover:bg-[#5bb8f0] text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all"
             >
-              Get Extension
+              Get Extension v{EXTENSION_VERSION}
             </button>
             <Link
               to="/extension-bridge?ext=1"

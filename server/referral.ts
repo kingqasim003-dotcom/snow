@@ -1,6 +1,6 @@
 import { getAdminToken, rtdbRequest, verifyUserToken } from "./firebaseAdmin";
 
-export const REFERRAL_SIGNUP_CREDITS = 50;
+export const REFERRAL_SIGNUP_CREDITS = 5;
 export const REFERRAL_PURCHASE_CREDITS = 20;
 const SIGNUP_CLAIM_WINDOW_MS = 2 * 60 * 60 * 1000;
 
@@ -71,6 +71,29 @@ async function bumpReferralStats(
   });
 }
 
+async function findReferrerUidByCode(
+  code: string,
+  adminToken: string
+): Promise<string | null> {
+  try {
+    const mapping = await rtdbRequest<ReferralCodeRow | null>(
+      "GET",
+      `referralCodes/${code}`,
+      adminToken
+    );
+    if (mapping?.uid) return mapping.uid;
+  } catch {
+    /* live rules may block referralCodes — fall back to user profiles */
+  }
+
+  const users = await rtdbRequest<Record<string, UserRow> | null>("GET", "users", adminToken);
+  if (!users || typeof users !== "object") return null;
+  for (const [uid, row] of Object.entries(users)) {
+    if (normalizeReferralCode(row?.referralCode || "") === code) return uid;
+  }
+  return null;
+}
+
 export async function ensureReferralCodeForUser(
   uid: string,
   email: string
@@ -80,20 +103,21 @@ export async function ensureReferralCodeForUser(
   if (user?.referralCode) return user.referralCode;
 
   const code = referralCodeFromUid(uid);
-  const existing = await rtdbRequest<ReferralCodeRow | null>(
-    "GET",
-    `referralCodes/${code}`,
-    adminToken
-  );
-  if (existing?.uid && existing.uid !== uid) {
+  const existingUid = await findReferrerUidByCode(code, adminToken);
+  if (existingUid && existingUid !== uid) {
     throw new Error("Could not allocate referral code. Try again.");
   }
 
-  await rtdbRequest("PUT", `referralCodes/${code}`, adminToken, {
-    uid,
-    email,
-    createdAt: Date.now(),
-  });
+  try {
+    await rtdbRequest("PUT", `referralCodes/${code}`, adminToken, {
+      uid,
+      email,
+      createdAt: Date.now(),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes("Permission denied")) throw err;
+  }
 
   const profilePatch: Record<string, unknown> = { referralCode: code };
   if (!user?.referralStats) {
@@ -140,12 +164,7 @@ export async function claimReferralSignup(
   const user = await verifyUserToken(idToken);
   const adminToken = await getAdminToken();
 
-  const mapping = await rtdbRequest<ReferralCodeRow | null>(
-    "GET",
-    `referralCodes/${code}`,
-    adminToken
-  );
-  const referrerUid = mapping?.uid;
+  const referrerUid = await findReferrerUidByCode(code, adminToken);
   if (!referrerUid) throw new Error("Referral link not found.");
   if (referrerUid === user.uid) throw new Error("You cannot use your own referral link.");
 

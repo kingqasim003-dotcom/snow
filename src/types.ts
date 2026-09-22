@@ -107,3 +107,10 @@ export interface PaymentInstructions {
   crypto: { title: string; details: string };
   jazzcash: { title: string; details: string };
 }
+
+export interface PricingConfig {
+  polarMonthly: number;
+  polarYearly: number;
+  unlimitedMonthly: number;
+  unlimitedYearly: number;
+}

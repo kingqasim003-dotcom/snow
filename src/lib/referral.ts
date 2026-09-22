@@ -1,6 +1,6 @@
 const PENDING_REF_KEY = "snowbear_pending_ref";
 
-export const REFERRAL_SIGNUP_CREDITS = 50;
+export const REFERRAL_SIGNUP_CREDITS = 5;
 export const REFERRAL_PURCHASE_CREDITS = 20;
 
 export function normalizeReferralCode(code: string): string {
@@ -35,4 +35,14 @@ export function clearPendingReferralCode(): void {
 
 export function buildReferralLink(code: string, origin = window.location.origin): string {
   return `${origin.replace(/\/$/, "")}/?ref=${encodeURIComponent(code)}`;
+}
+
+/** Deterministic code from Firebase uid (matches server referralCodeFromUid). */
+export function referralCodeFromUid(uid: string): string {
+  let h = 0;
+  for (let i = 0; i < uid.length; i++) {
+    h = (Math.imul(31, h) + uid.charCodeAt(i)) >>> 0;
+  }
+  const segment = h.toString(36).toUpperCase().slice(0, 6).padStart(6, "0");
+  return `SB-${segment}`;
 }

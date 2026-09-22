@@ -116,8 +116,18 @@ export function validateBackendOrigin(value: unknown, fallback: string): string 
 }
 
 export function safeClientError(err: unknown): string {
-  if (process.env.NODE_ENV !== "production" && err instanceof Error) {
-    return err.message;
+  const message = err instanceof Error ? err.message : "";
+  if (message.includes("No Groq API keys configured")) {
+    return "AI is not configured. Add GROQ_API_KEYS to the website .env file and redeploy.";
+  }
+  if (message.includes("Invalid API Key") || message.includes("invalid_api_key")) {
+    return "AI API key is invalid or expired. Update GROQ_API_KEYS in the website .env file.";
+  }
+  if (message.includes("AI service temporarily unavailable")) {
+    return "AI service is temporarily unavailable. Check GROQ_API_KEYS in the website .env file.";
+  }
+  if (process.env.NODE_ENV !== "production" && message) {
+    return message;
   }
   return "Request failed. Please try again later.";
 }

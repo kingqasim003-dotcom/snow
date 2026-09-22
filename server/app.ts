@@ -2,7 +2,17 @@ import fs from "fs";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import path from "path";
 import { buildAdminConfigScript } from "./adminConfig";
-import { callGroqChatCompletion } from "./groq";
+import { callGroqChatCompletion, groqMaxTokens } from "./groq";
+import {
+  cleanModelOutput,
+  compressSystemInstructionFast,
+  compressUserPrompt,
+  enhanceSystemInstruction,
+  enhanceUserPrompt,
+  grammarSystemInstructionFast,
+  grammarUserPrompt,
+  guardGrammarOutput,
+} from "./prompts";
 import { buildExtensionZip } from "./extensionZip";
 import { redeemPromoForUser } from "./promoRedeem";
 import {
@@ -10,7 +20,13 @@ import {
   getReferralDashboard,
   grantReferralPurchaseReward,
 } from "./referral";
-import { getAdminToken, rtdbRequest } from "./firebaseAdmin";
+import {
+  resolveHealthSlot,
+  runAndPersistHealthCheck,
+  type HealthSlot,
+} from "./apiHealth";
+import { runPlanMaintenance } from "./planCron";
+import { getAdminToken, rtdbRequest, serverConfig } from "./firebaseAdmin";
 import { uploadImageToImgbb } from "./imgbb";
 import {
   corsMiddleware,
@@ -31,6 +47,37 @@ function resolveAdminPanelDir(): string {
     if (fs.existsSync(path.join(dir, "index.html"))) return dir;
   }
   return path.join(process.cwd(), "admin-panel");
+}
+
+function readAdminGatePassword(): string {
+  return (
+    process.env.ADMIN_GATE_PASSWORD?.trim() ||
+    (process.env.ADMIN_GATE_PASSWORD_B64
+      ? Buffer.from(process.env.ADMIN_GATE_PASSWORD_B64, "base64").toString("utf8")
+      : "")
+  );
+}
+
+function readHealthCronSecret(): string {
+  return (
+    process.env.CRON_SECRET?.trim() ||
+    process.env.HEALTH_CRON_SECRET?.trim() ||
+    readAdminGatePassword() ||
+    ""
+  );
+}
+
+function isValidAdminGatePassword(gatePassword: string): boolean {
+  const expected = readAdminGatePassword();
+  return !!(expected && gatePassword && gatePassword === expected);
+}
+
+function isValidHealthCronSecret(req: Request): boolean {
+  const expected = readHealthCronSecret();
+  if (!expected) return false;
+  const header = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
+  const query = typeof req.query.secret === "string" ? req.query.secret : "";
+  return header === expected || query === expected;
 }
 
 export function createApp(options: { serveSpa?: boolean } = {}): Express {
@@ -76,8 +123,114 @@ export function createApp(options: { serveSpa?: boolean } = {}): Express {
     createRateLimiter(15, 60_000)
   );
 
+  app.post("/api/admin/session", createRateLimiter(8, 60_000), (req, res) => {
+    const gatePassword =
+      typeof req.body?.gatePassword === "string" ? req.body.gatePassword : "";
+    const expected =
+      process.env.ADMIN_GATE_PASSWORD?.trim() ||
+      (process.env.ADMIN_GATE_PASSWORD_B64
+        ? Buffer.from(process.env.ADMIN_GATE_PASSWORD_B64, "base64").toString("utf8")
+        : "");
+    const { adminEmail, adminPassword } = serverConfig();
+
+    if (!expected || !adminPassword) {
+      return res.status(503).json({ ok: false, error: "Admin panel is not configured on the server." });
+    }
+    if (gatePassword !== expected) {
+      return res.status(401).json({ ok: false, error: "Wrong password." });
+    }
+
+    res.json({ ok: true, adminEmail, adminPassword });
+  });
+
+  app.get("/api/admin/health-status", createRateLimiter(30, 60_000), async (_req, res) => {
+    try {
+      const token = await getAdminToken();
+      const snapshot = await rtdbRequest<Record<string, unknown> | null>(
+        "GET",
+        "config/apiHealth",
+        token,
+      );
+      res.json({ ok: true, health: snapshot || null });
+    } catch (err) {
+      console.error("Health status read error:", err);
+      res.status(500).json({ ok: false, error: safeClientError(err) });
+    }
+  });
+
+  app.post("/api/admin/health-check", createRateLimiter(6, 60_000), async (req, res) => {
+    const gatePassword =
+      typeof req.body?.gatePassword === "string" ? req.body.gatePassword : "";
+    if (!isValidAdminGatePassword(gatePassword)) {
+      return res.status(401).json({ ok: false, error: "Wrong admin password." });
+    }
+
+    const slotRaw = typeof req.body?.slot === "string" ? req.body.slot : "";
+    const slot: HealthSlot | undefined =
+      slotRaw === "morning" || slotRaw === "midday" || slotRaw === "night"
+        ? slotRaw
+        : undefined;
+
+    try {
+      const health = await runAndPersistHealthCheck(slot);
+      res.json({ ok: true, health });
+    } catch (err) {
+      console.error("Health check error:", err);
+      res.status(500).json({ ok: false, error: safeClientError(err) });
+    }
+  });
+
+  app.get("/api/admin/health-cron", createRateLimiter(12, 60_000), async (req, res) => {
+    if (!isValidHealthCronSecret(req)) {
+      return res.status(401).json({ ok: false, error: "Unauthorized cron." });
+    }
+
+    const slotRaw = typeof req.query.slot === "string" ? req.query.slot : "";
+    const slot: HealthSlot | undefined =
+      slotRaw === "morning" || slotRaw === "midday" || slotRaw === "night"
+        ? slotRaw
+        : resolveHealthSlot();
+
+    try {
+      const health = await runAndPersistHealthCheck(slot);
+      res.json({ ok: true, health });
+    } catch (err) {
+      console.error("Health cron error:", err);
+      res.status(500).json({ ok: false, error: safeClientError(err) });
+    }
+  });
+
+  app.get("/api/admin/plan-cron", createRateLimiter(12, 60_000), async (req, res) => {
+    if (!isValidHealthCronSecret(req)) {
+      return res.status(401).json({ ok: false, error: "Unauthorized cron." });
+    }
+
+    try {
+      const result = await runPlanMaintenance();
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error("Plan cron error:", err);
+      res.status(500).json({ ok: false, error: safeClientError(err) });
+    }
+  });
+
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", time: new Date().toISOString() });
+    let groqConfigured = false;
+    try {
+      if (!process.env.GROQ_API_KEYS && process.env.GROQ_API_KEYS_B64) {
+        process.env.GROQ_API_KEYS = Buffer.from(process.env.GROQ_API_KEYS_B64, "base64").toString("utf8");
+      }
+      const keys = process.env.GROQ_API_KEYS?.split(/[,\n]/).map((k) => k.trim()).filter(Boolean);
+      groqConfigured = !!(keys?.length || process.env.GROQ_API_KEY?.trim());
+    } catch {
+      groqConfigured = false;
+    }
+    res.json({
+      status: "ok",
+      groqConfigured,
+      groqModel: process.env.GROQ_MODEL?.trim() || "llama-3.1-8b-instant",
+      time: new Date().toISOString(),
+    });
   });
 
   app.post("/api/enhance", async (req, res) => {
@@ -91,18 +244,14 @@ export function createApp(options: { serveSpa?: boolean } = {}): Express {
     const targetModel = validateTargetModel(req.body?.targetModel);
 
     try {
-      const modelTargetStr = targetModel
-        ? ` This prompt is specifically being enhanced for ${targetModel}.`
-        : "";
-      const systemInstruction = `You are SnowBear, a highly skilled AI prompt engineer mascot. Your job is to transform simple, vague prompts into extremely effective, structured, and detailed prompts that yield superior AI results. Maintain the user's core intent but add relevant context, specify the optimal persona, output formats, constraints, and examples if appropriate.${modelTargetStr} Respond with the enhanced prompt ONLY, in plain text (Markdown structure is allowed). Do not include any meta-text like 'Here is your enhanced prompt:' or 'Sure!'. Keep your response strictly to the final enhanced prompt itself.`;
-
       const result = await callGroqChatCompletion({
-        systemInstruction,
-        userPrompt: prompt,
-        temperature: 0.7,
+        systemInstruction: enhanceSystemInstruction(targetModel),
+        userPrompt: enhanceUserPrompt(prompt),
+        temperature: 0.15,
+        maxTokens: groqMaxTokens("enhance", prompt),
       });
 
-      res.json({ result });
+      res.json({ result: cleanModelOutput(result) });
     } catch (err) {
       console.error("Enhance error:", err);
       res.status(500).json({ error: safeClientError(err) });
@@ -118,15 +267,15 @@ export function createApp(options: { serveSpa?: boolean } = {}): Express {
     }
 
     try {
-      const systemInstruction =
-        "You are SnowBear, an expert in LLM token optimization. Your job is to compress the provided prompt as much as possible while perfectly preserving its core instructions, intent, parameters, and meaning. Eliminate fluff, redundant words, and passive language. Use dense, high-information terminology. Respond with the compressed prompt ONLY, in plain text. Do not include any introductory or concluding remarks.";
       const result = await callGroqChatCompletion({
-        systemInstruction,
-        userPrompt: prompt,
-        temperature: 0.3,
+        systemInstruction: compressSystemInstructionFast(),
+        userPrompt: compressUserPrompt(prompt),
+        temperature: 0,
+        maxTokens: groqMaxTokens("compress", prompt),
       });
 
-      res.json({ result });
+      const cleaned = cleanModelOutput(result);
+      res.json({ result: cleaned.length < prompt.length ? cleaned : prompt });
     } catch (err) {
       console.error("Compress error:", err);
       res.status(500).json({ error: safeClientError(err) });
@@ -142,15 +291,14 @@ export function createApp(options: { serveSpa?: boolean } = {}): Express {
     }
 
     try {
-      const systemInstruction =
-        "You are SnowBear, an AI editor. Your job is to fix spelling, grammar, and sentence structure issues in the user's prompt to make it clear, crisp, and professional. Do not completely rewrite the prompt's structure unless it is highly confusing; just polish the grammar and clarity. Respond with the grammatically corrected prompt ONLY, in plain text.";
       const result = await callGroqChatCompletion({
-        systemInstruction,
-        userPrompt: prompt,
-        temperature: 0.2,
+        systemInstruction: grammarSystemInstructionFast(),
+        userPrompt: grammarUserPrompt(prompt),
+        temperature: 0,
+        maxTokens: groqMaxTokens("grammar", prompt),
       });
 
-      res.json({ result });
+      res.json({ result: guardGrammarOutput(prompt, result) });
     } catch (err) {
       console.error("Grammar error:", err);
       res.status(500).json({ error: safeClientError(err) });
@@ -167,12 +315,13 @@ export function createApp(options: { serveSpa?: boolean } = {}): Express {
 
     try {
       const systemInstruction =
-        "Analyze the provided prompt for quality, detail, specificity, constraints, and context. Calculate a score from 0 to 100 where 100 is a flawless, context-rich, instruction-clear prompt, and 0 is extremely vague. Generate 3 to 5 clear, actionable bullet-point suggestions to improve the prompt. Return your response as a strict JSON object with fields 'score' (integer) and 'suggestions' (array of strings).";
+        'Score prompt quality 0-100. Return strict JSON only: {"score":number,"suggestions":["tip1","tip2","tip3"]}. Max 3 short suggestions.';
       const result = await callGroqChatCompletion({
         systemInstruction,
-        userPrompt: `Analyze this prompt and rate its quality:\n\n${prompt}`,
-        temperature: 0.3,
+        userPrompt: prompt,
+        temperature: 0.1,
         jsonMode: true,
+        maxTokens: groqMaxTokens("score", prompt),
       });
 
       const parsed = JSON.parse(result || "{}");
@@ -337,9 +486,7 @@ export function createApp(options: { serveSpa?: boolean } = {}): Express {
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error("Unhandled server error:", err);
     if (!res.headersSent) {
-      res.status(500).json({
-        error: err instanceof Error ? err.message : "Internal server error.",
-      });
+      res.status(500).json({ error: safeClientError(err) });
     }
   });
 

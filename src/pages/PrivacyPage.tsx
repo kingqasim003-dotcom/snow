@@ -1,4 +1,12 @@
+import { usePageMeta } from "../hooks/usePageMeta";
+
 export default function PrivacyPage() {
+  usePageMeta({
+    title: "Privacy Policy | SnowBear",
+    description: "Read the Privacy Policy for SnowBear to understand how we collect, use, and protect your information.",
+    path: "/privacy",
+  });
+
   return (
     <article className="max-w-3xl mx-auto px-6 py-16 relative z-10 prose prose-slate prose-sm">
       <h1 className="text-3xl font-black text-slate-900 mb-2">Privacy Policy</h1>

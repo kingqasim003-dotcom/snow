@@ -19,6 +19,7 @@ import { isDisposableEmail } from "../lib/disposableEmails";
 import { getAuthErrorMessage } from "../lib/authErrors";
 import { getPendingReferralCode, clearPendingReferralCode } from "../lib/referral";
 import { claimReferralSignup } from "../lib/rtdbReferral";
+import { clearLocalSession } from "../lib/authSession";
 import { ensureUserRecord } from "../lib/rtdbUsers";
 interface AuthContextValue {
   firebaseUser: User | null;
@@ -31,11 +32,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const REDIRECT_ERROR_KEY = "snowbear_auth_error";
 const googleProvider = new GoogleAuthProvider();
 
-googleProvider.setCustomParameters({ prompt: "select_account" });
-
 function shouldUseRedirect(): boolean {
   const host = window.location.hostname;
-  return host === "127.0.0.1" || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  return host === "127.0.0.1" || host === "localhost";
 }
 
 function storeAuthError(message: string) {
@@ -125,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    clearLocalSession();
     await firebaseSignOut(auth);
   };
 

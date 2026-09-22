@@ -1,6 +1,6 @@
 import { get, onValue, ref, set, type Unsubscribe } from "firebase/database";
 import { rtdb } from "./rtdb";
-import type { PaymentInstructions } from "../types";
+import type { PaymentInstructions, PricingConfig } from "../types";
 
 export const DEFAULT_PAYMENT_INSTRUCTIONS: PaymentInstructions = {
   bank: {
@@ -35,4 +35,26 @@ export async function savePaymentInstructions(instructions: PaymentInstructions)
 export async function getPaymentInstructions(): Promise<PaymentInstructions> {
   const snap = await get(ref(rtdb, "config/paymentInstructions"));
   return snap.val() || DEFAULT_PAYMENT_INSTRUCTIONS;
+}
+
+export const DEFAULT_PRICING: PricingConfig = {
+  polarMonthly: 0.99,
+  polarYearly: 9.50,
+  unlimitedMonthly: 9.99,
+  unlimitedYearly: 95.88,
+};
+
+export function listenPricing(onChange: (pricing: PricingConfig) => void): Unsubscribe {
+  return onValue(ref(rtdb, "config/pricing"), (snap) => {
+    onChange(snap.val() || DEFAULT_PRICING);
+  });
+}
+
+export async function savePricing(pricing: PricingConfig): Promise<void> {
+  await set(ref(rtdb, "config/pricing"), pricing);
+}
+
+export async function getPricing(): Promise<PricingConfig> {
+  const snap = await get(ref(rtdb, "config/pricing"));
+  return snap.val() || DEFAULT_PRICING;
 }

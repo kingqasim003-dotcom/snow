@@ -2,18 +2,18 @@ import type { UserProfile } from "../types";
 
 export type PlanBillingCycle = "monthly" | "yearly";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-export const PLAN_DURATION_MS: Record<PlanBillingCycle, number> = {
-  monthly: 30 * DAY_MS,
-  yearly: 365 * DAY_MS,
-};
-
+/** Same clock time on the next calendar month or year (e.g. Mar 15 3:00pm → Apr 15 3:00pm). */
 export function planExpiresAtFromBilling(
   billingCycle: PlanBillingCycle,
   from = Date.now()
 ): number {
-  return from + PLAN_DURATION_MS[billingCycle];
+  const d = new Date(from);
+  if (billingCycle === "yearly") {
+    d.setFullYear(d.getFullYear() + 1);
+  } else {
+    d.setMonth(d.getMonth() + 1);
+  }
+  return d.getTime();
 }
 
 export function effectiveUserPlan(

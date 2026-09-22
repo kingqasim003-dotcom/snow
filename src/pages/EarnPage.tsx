@@ -6,7 +6,9 @@ import {
   REFERRAL_PURCHASE_CREDITS,
   REFERRAL_SIGNUP_CREDITS,
   buildReferralLink,
+  referralCodeFromUid,
 } from "../lib/referral";
+import { getSiteOrigin } from "../lib/siteOrigin";
 import { fetchReferralDashboard, type ReferralDashboard } from "../lib/rtdbReferral";
 import type { UserProfile } from "../types";
 
@@ -14,7 +16,15 @@ interface EarnPageProps {
   user: UserProfile;
 }
 
+import { usePageMeta } from "../hooks/usePageMeta";
+
 export default function EarnPage({ user }: EarnPageProps) {
+  usePageMeta({
+    title: "Earn Credits | Refer Friends to SnowBear",
+    description: "Refer friends to SnowBear and earn bonus credits when they sign up or purchase a plan.",
+    path: "/earn",
+  });
+
   const { firebaseUser } = useAuth();
   const [dashboard, setDashboard] = useState<ReferralDashboard | null>(null);
   const [loading, setLoading] = useState(false);
@@ -40,7 +50,15 @@ export default function EarnPage({ user }: EarnPageProps) {
     if (firebaseUser) load();
   }, [firebaseUser, load]);
 
-  const referralLink = dashboard?.link || (dashboard?.code ? buildReferralLink(dashboard.code) : "");
+  const siteOrigin = getSiteOrigin();
+  const fallbackCode = user.id ? referralCodeFromUid(user.id) : "";
+  const referralLink =
+    dashboard?.link ||
+    (dashboard?.code
+      ? buildReferralLink(dashboard.code, siteOrigin)
+      : fallbackCode
+        ? buildReferralLink(fallbackCode, siteOrigin)
+        : "");
 
   const copyLink = async () => {
     if (!referralLink) return;
@@ -62,12 +80,12 @@ export default function EarnPage({ user }: EarnPageProps) {
           <p className="text-sm text-slate-500 mt-2 max-w-md mx-auto">
             Sign in to get your unique referral link and earn bonus credits when friends join SnowBear.
           </p>
-          <Link
-            to="/auth?redirect=/earn"
+          <a
+            href={`${siteOrigin}/auth?redirect=${encodeURIComponent("/earn")}`}
             className="inline-block mt-6 bg-[#6EC6FF] hover:bg-[#5bb8f0] text-white text-sm font-bold px-6 py-3 rounded-full"
           >
             Continue with Google
-          </Link>
+          </a>
         </div>
       </section>
     );

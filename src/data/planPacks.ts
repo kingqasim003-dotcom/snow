@@ -58,3 +58,27 @@ export function getPlanPackByQuery(
   if (cycle !== "monthly" && cycle !== "yearly") return undefined;
   return PLAN_PACKS.find((p) => p.plan === normalizedPlan && p.billingCycle === cycle);
 }
+
+export function updatePlanPacksPrices(pricing: {
+  polarMonthly: number;
+  polarYearly: number;
+  unlimitedMonthly: number;
+  unlimitedYearly: number;
+}) {
+  const proMonthly = PLAN_PACKS.find((p) => p.id === "plan_pro_monthly");
+  if (proMonthly) {
+    proMonthly.priceUsd = pricing.polarMonthly;
+  }
+  const proYearly = PLAN_PACKS.find((p) => p.id === "plan_pro_yearly");
+  if (proYearly) {
+    proYearly.priceUsd = pricing.polarYearly;
+  }
+  const unlimitedMonthly = PLAN_PACKS.find((p) => p.id === "plan_unlimited_monthly");
+  if (unlimitedMonthly) {
+    unlimitedMonthly.priceUsd = pricing.unlimitedMonthly;
+  }
+  const unlimitedYearly = PLAN_PACKS.find((p) => p.id === "plan_unlimited_yearly");
+  if (unlimitedYearly) {
+    unlimitedYearly.priceUsd = pricing.unlimitedYearly;
+  }
+}

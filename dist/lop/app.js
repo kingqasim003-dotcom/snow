@@ -42,8 +42,12 @@
     payments: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
     users: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>',
     bell: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>',
+    notifications: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>',
+    search: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>',
     bag: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>',
     gear: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>',
+    apihealth:
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
   };
 
   const PAGE_META = {
@@ -52,7 +56,17 @@
     promos: { title: "Promo Codes", subtitle: "Generate credit coupon codes" },
     payments: { title: "Payment Info", subtitle: "Checkout page payment instructions" },
     users: { title: "Users", subtitle: "Manage plans and credits" },
+    notifications: { title: "Notifications", subtitle: "All admin alerts and activity" },
+    apihealth: {
+      title: "API Health",
+      subtitle: "Groq keys, website API, and extension path — checked 3× daily",
+    },
   };
+
+  const NOTIFY_STORAGE_KEY = "snowbear_admin_notifications";
+
+  let adminSessionCreds = null;
+  let gatePasswordMemory = "";
 
   const state = {
     tab: "overview",
@@ -61,6 +75,7 @@
     orders: [],
     promos: [],
     instructions: defaultPayments(),
+    pricing: { polarMonthly: 0.99, polarYearly: 9.50, unlimitedMonthly: 9.99, unlimitedYearly: 95.88 },
     unsubs: [],
     notifications: [],
     notifyReady: false,
@@ -71,13 +86,23 @@
     usersBooted: false,
     ordersBooted: false,
     bulkActivateDone: false,
+    userSearchQuery: "",
+    notificationFilter: "",
+    apiHealth: null,
+    healthRunning: false,
+    healthError: "",
+    revenueRange: "6m",
+    charts: {},
   };
 
   const TABS = [
     { id: "overview", label: "Overview", icon: "overview", section: "general" },
+    { id: "apihealth", label: "API Health", icon: "apihealth", section: "general" },
     { id: "orders", label: "Orders", icon: "orders", section: "general" },
+    { id: "notifications", label: "Notifications", icon: "notifications", section: "general" },
     { id: "promos", label: "Promo Codes", icon: "promos", section: "general" },
     { id: "payments", label: "Payment Info", icon: "payments", section: "general" },
+    { id: "pricing", label: "Pricing", icon: "payments", section: "general" },
     { id: "users", label: "Users", icon: "users", section: "management" },
   ];
 
@@ -114,12 +139,15 @@
     return plan;
   }
 
-  function planDurationMs(cycle) {
-    return cycle === "yearly" ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+  function planExpiresAtFromBilling(cycle, from = Date.now()) {
+    const d = new Date(from);
+    if (cycle === "yearly") d.setFullYear(d.getFullYear() + 1);
+    else d.setMonth(d.getMonth() + 1);
+    return d.getTime();
   }
 
   function planCycleLabel(cycle) {
-    return cycle === "yearly" ? "1 year" : "30 days";
+    return cycle === "yearly" ? "1 year" : "1 month";
   }
 
   function planExpiryMeta(user) {
@@ -233,6 +261,408 @@
     return `${order.credits || 0} Credits`;
   }
 
+  function approvedOrders() {
+    return state.orders.filter((o) => o.status === "approved");
+  }
+
+  function monthBuckets(monthCount) {
+    const buckets = [];
+    const now = new Date();
+    for (let i = monthCount - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      buckets.push({
+        key,
+        label: d.toLocaleString("en-US", { month: "short" }),
+      });
+    }
+    return buckets;
+  }
+
+  function buildMonthlyRevenue(monthCount) {
+    const buckets = monthBuckets(monthCount);
+    const totals = Object.fromEntries(buckets.map((b) => [b.key, 0]));
+    approvedOrders().forEach((order) => {
+      const ts = order.reviewedAt || order.createdAt;
+      if (!ts) return;
+      const d = new Date(ts);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (key in totals) totals[key] += Number(order.amountUsd) || 0;
+    });
+    return {
+      labels: buckets.map((b) => b.label),
+      values: buckets.map((b) => Math.round(totals[b.key])),
+    };
+  }
+
+  function currentMonthRevenueTotal() {
+    const now = new Date();
+    const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    return approvedOrders().reduce((sum, order) => {
+      const ts = order.reviewedAt || order.createdAt;
+      if (!ts) return sum;
+      const d = new Date(ts);
+      const orderKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (orderKey !== key) return sum;
+      return sum + (Number(order.amountUsd) || 0);
+    }, 0);
+  }
+
+  function lastSevenDays() {
+    const days = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - i);
+      days.push({
+        start: d.getTime(),
+        end: d.getTime() + 24 * 60 * 60 * 1000,
+        label: d.toLocaleString("en-US", { weekday: "short" }),
+      });
+    }
+    return days;
+  }
+
+  function buildWeeklyOrders() {
+    const days = lastSevenDays();
+    const values = days.map((day) =>
+      state.orders.filter((o) => {
+        const ts = o.createdAt || 0;
+        return ts >= day.start && ts < day.end;
+      }).length
+    );
+    return { labels: days.map((d) => d.label), values };
+  }
+
+  function buildWeeklyTraffic() {
+    const days = lastSevenDays();
+    const organic = [];
+    const paid = [];
+    const referral = [];
+    days.forEach((day) => {
+      organic.push(
+        state.users.filter((u) => {
+          const ts = u.createdAt || 0;
+          return ts >= day.start && ts < day.end && !u.referredByUid;
+        }).length
+      );
+      referral.push(
+        state.users.filter((u) => {
+          const ts = u.createdAt || 0;
+          return ts >= day.start && ts < day.end && !!u.referredByUid;
+        }).length
+      );
+      paid.push(
+        approvedOrders().filter((o) => {
+          const ts = o.reviewedAt || o.createdAt || 0;
+          return ts >= day.start && ts < day.end;
+        }).length
+      );
+    });
+    return { labels: days.map((d) => d.label), organic, paid, referral };
+  }
+
+  function srTableRows(labels, values) {
+    return labels
+      .map(
+        (label, i) =>
+          `<tr><th scope="row">${esc(label)}</th><td>$${Number(values[i] || 0).toLocaleString()}</td></tr>`
+      )
+      .join("");
+  }
+
+  function destroyOverviewCharts() {
+    Object.values(state.charts).forEach((chart) => {
+      try {
+        chart.destroy();
+      } catch (_) {}
+    });
+    state.charts = {};
+  }
+
+  function initOverviewCharts() {
+    if (state.tab !== "overview" || typeof Chart === "undefined") return;
+    destroyOverviewCharts();
+
+    const revenue6 = buildMonthlyRevenue(6);
+    const revenue12 = buildMonthlyRevenue(12);
+    const monthTotal = currentMonthRevenueTotal();
+    const weeklyOrders = buildWeeklyOrders();
+    const traffic = buildWeeklyTraffic();
+    const activeRevenue =
+      state.revenueRange === "12m"
+        ? revenue12
+        : revenue6;
+
+    const sparkCanvas = document.getElementById("revenue-sparkline-chart");
+    if (sparkCanvas) {
+      state.charts.spark = new Chart(sparkCanvas, {
+        type: "line",
+        data: {
+          labels: revenue6.labels,
+          datasets: [
+            {
+              data: revenue6.values,
+              borderColor: "#10b981",
+              borderWidth: 2,
+              pointRadius: 0,
+              tension: 0.35,
+              fill: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: { x: { display: false }, y: { display: false } },
+        },
+      });
+    }
+
+    const weeklyCanvas = document.getElementById("weekly-orders-bar-chart");
+    if (weeklyCanvas) {
+      state.charts.weekly = new Chart(weeklyCanvas, {
+        type: "bar",
+        data: {
+          labels: weeklyOrders.labels,
+          datasets: [
+            {
+              label: "Orders",
+              data: weeklyOrders.values,
+              backgroundColor: "#6366f1",
+              hoverBackgroundColor: "#4338ca",
+              borderRadius: 4,
+              maxBarThickness: 32,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (item) => `${item.formattedValue} orders`,
+              },
+            },
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: "#64748b" } },
+            y: {
+              beginAtZero: true,
+              grid: { color: "#e8eef4" },
+              ticks: { color: "#64748b", precision: 0 },
+            },
+          },
+        },
+      });
+    }
+
+    const lineCanvas = document.getElementById("revenue-line-chart");
+    if (lineCanvas) {
+      const ctx = lineCanvas.getContext("2d");
+      const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+      gradient.addColorStop(0, "rgba(79, 70, 229, 0.25)");
+      gradient.addColorStop(1, "rgba(79, 70, 229, 0)");
+      state.charts.revenueLine = new Chart(lineCanvas, {
+        type: "line",
+        data: {
+          labels: activeRevenue.labels,
+          datasets: [
+            {
+              label: "Revenue",
+              data: activeRevenue.values,
+              borderColor: "#4f46e5",
+              backgroundColor: gradient,
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHoverRadius: 5,
+              tension: 0.35,
+              fill: true,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (item) => `$${Number(item.raw || 0).toLocaleString()}`,
+              },
+            },
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: "#64748b" } },
+            y: {
+              beginAtZero: true,
+              grid: { color: "#e8eef4" },
+              ticks: {
+                color: "#64748b",
+                callback: (v) => `$${Number(v) / 1000}k`,
+              },
+            },
+          },
+        },
+      });
+    }
+
+    const trafficCanvas = document.getElementById("channel-traffic-stacked-bar-chart");
+    if (trafficCanvas) {
+      state.charts.traffic = new Chart(trafficCanvas, {
+        type: "bar",
+        data: {
+          labels: traffic.labels,
+          datasets: [
+            {
+              label: "Signups",
+              data: traffic.organic,
+              backgroundColor: "#4f46e5",
+              hoverBackgroundColor: "#4338ca",
+              borderColor: "#ffffff",
+              borderWidth: 2,
+              maxBarThickness: 32,
+            },
+            {
+              label: "Orders",
+              data: traffic.paid,
+              backgroundColor: "#10b981",
+              hoverBackgroundColor: "#059669",
+              borderColor: "#ffffff",
+              borderWidth: 2,
+              maxBarThickness: 32,
+            },
+            {
+              label: "Referrals",
+              data: traffic.referral,
+              backgroundColor: "#f59e0b",
+              hoverBackgroundColor: "#d97706",
+              borderColor: "#ffffff",
+              borderWidth: 2,
+              maxBarThickness: 32,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { position: "bottom", labels: { color: "#64748b" } },
+            tooltip: {
+              callbacks: {
+                label: (item) => `${item.dataset.label}: ${item.formattedValue}`,
+              },
+            },
+          },
+          scales: {
+            x: { stacked: true, grid: { display: false }, ticks: { color: "#64748b" } },
+            y: {
+              stacked: true,
+              beginAtZero: true,
+              grid: { color: "#e8eef4" },
+              ticks: { color: "#64748b", precision: 0 },
+            },
+          },
+        },
+      });
+    }
+
+    const monthEl = document.getElementById("analytics-month-revenue");
+    if (monthEl) monthEl.textContent = formatMoney(monthTotal);
+  }
+
+  function renderAnalyticsSection() {
+    const revenue6 = buildMonthlyRevenue(6);
+    const revenue12 = buildMonthlyRevenue(12);
+    const activeRevenue = state.revenueRange === "12m" ? revenue12 : revenue6;
+    const monthTotal = currentMonthRevenueTotal();
+    const weeklyOrders = buildWeeklyOrders();
+    const traffic = buildWeeklyTraffic();
+
+    const range6Active = state.revenueRange === "6m";
+    const range12Active = state.revenueRange === "12m";
+
+    return `
+    <div class="analytics-grid">
+      <div class="analytics-card analytics-card--spark">
+        <div class="analytics-spark-body">
+          <div>
+            <strong class="analytics-kicker">Monthly revenue</strong>
+            <p class="analytics-value" id="analytics-month-revenue">${formatMoney(monthTotal)}</p>
+          </div>
+          <div class="analytics-spark-canvas-wrap">
+            <canvas id="revenue-sparkline-chart" role="img" aria-label="Monthly revenue trend, sparkline chart"></canvas>
+          </div>
+        </div>
+        <table class="sr-only">
+          <caption>Monthly revenue by month</caption>
+          <thead><tr><th scope="col">Month</th><th scope="col">Revenue</th></tr></thead>
+          <tbody>${srTableRows(revenue6.labels, revenue6.values)}</tbody>
+        </table>
+      </div>
+
+      <div class="analytics-card">
+        <h2 class="analytics-title">Orders this week</h2>
+        <div class="analytics-chart analytics-chart--md">
+          <canvas id="weekly-orders-bar-chart" role="img" aria-label="Orders this week, bar chart"></canvas>
+        </div>
+        <table class="sr-only">
+          <caption>Orders per day this week</caption>
+          <thead><tr><th scope="col">Day</th><th scope="col">Orders</th></tr></thead>
+          <tbody>${weeklyOrders.labels
+            .map(
+              (label, i) =>
+                `<tr><th scope="row">${esc(label)}</th><td>${weeklyOrders.values[i] || 0}</td></tr>`
+            )
+            .join("")}</tbody>
+        </table>
+      </div>
+
+      <div class="analytics-card analytics-card--wide">
+        <div class="analytics-head-row">
+          <h2 class="analytics-title">Monthly revenue</h2>
+          <div class="analytics-range-toggle" role="group" aria-label="Revenue range">
+            <button type="button" data-revenue-range="6m" aria-pressed="${range6Active}" class="analytics-range-btn ${range6Active ? "active" : ""}">6M</button>
+            <button type="button" data-revenue-range="12m" aria-pressed="${range12Active}" class="analytics-range-btn ${range12Active ? "active" : ""}">12M</button>
+          </div>
+        </div>
+        <div class="analytics-chart analytics-chart--md">
+          <canvas id="revenue-line-chart" role="img" aria-label="Monthly revenue, line chart"></canvas>
+        </div>
+        <table id="revenue-line-chart-table" class="sr-only" aria-live="polite">
+          <caption>Monthly revenue by month</caption>
+          <thead><tr><th scope="col">Month</th><th scope="col">Revenue</th></tr></thead>
+          <tbody>${srTableRows(activeRevenue.labels, activeRevenue.values)}</tbody>
+        </table>
+      </div>
+
+      <div class="analytics-card analytics-card--wide">
+        <h2 class="analytics-title">Traffic by channel</h2>
+        <p class="meta">Signups, approved orders, and referral signups — last 7 days</p>
+        <div class="analytics-chart analytics-chart--md">
+          <canvas id="channel-traffic-stacked-bar-chart" role="img" aria-label="Traffic by channel, stacked bar chart"></canvas>
+        </div>
+        <table class="sr-only">
+          <caption>Website activity by channel, per day</caption>
+          <thead><tr><th scope="col">Day</th><th scope="col">Signups</th><th scope="col">Orders</th><th scope="col">Referrals</th></tr></thead>
+          <tbody>${traffic.labels
+            .map(
+              (label, i) =>
+                `<tr><th scope="row">${esc(label)}</th><td>${traffic.organic[i] || 0}</td><td>${traffic.paid[i] || 0}</td><td>${traffic.referral[i] || 0}</td></tr>`
+            )
+            .join("")}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
   function formatMoney(amount) {
     const n = Number(amount);
     if (!Number.isFinite(n)) return "$0";
@@ -264,12 +694,48 @@
     } catch (_) { /* ignore */ }
   }
 
+  function loadStoredNotifications() {
+    try {
+      const raw = localStorage.getItem(NOTIFY_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveStoredNotifications() {
+    try {
+      localStorage.setItem(NOTIFY_STORAGE_KEY, JSON.stringify(state.notifications.slice(0, 100)));
+    } catch { /* ignore */ }
+  }
+
   function pushNotification(title, body, kind) {
     const item = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, body, kind: kind || "info", at: Date.now() };
     state.notifications.unshift(item);
-    if (state.notifications.length > 30) state.notifications.length = 30;
+    if (state.notifications.length > 100) state.notifications.length = 100;
+    saveStoredNotifications();
     playNotifySound();
     renderNotificationUi();
+  }
+
+  function clearAllNotifications() {
+    state.notifications = [];
+    saveStoredNotifications();
+    renderNotificationUi();
+    renderTopbar();
+    if (state.tab === "notifications") renderMain();
+  }
+
+  function filterUsersBySearch(users, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) => {
+      const email = (u.email || "").toLowerCase();
+      const display = userDisplayEmail(u).toLowerCase();
+      const uid = (u.uid || "").toLowerCase();
+      return email.includes(q) || display.includes(q) || uid.includes(q);
+    });
   }
 
   function renderNotificationUi() {
@@ -340,8 +806,12 @@
     if (msg.includes("different region") || msg.includes("correctUrl")) {
       return "Database URL wrong. Hard-refresh this page (Ctrl+Shift+R).";
     }
-    if (err?.code === "PERMISSION_DENIED") {
-      return "Permission denied. Sign in as admin, hard-refresh (Ctrl+Shift+R), or run: firebase deploy --only database";
+    if (err?.code === "PERMISSION_DENIED" || msg.includes("PERMISSION_DENIED")) {
+      const who = auth.currentUser?.email;
+      if (who && who.trim().toLowerCase() !== CFG.adminEmail.trim().toLowerCase()) {
+        return `Signed in as ${who}, not admin. Click “Leave admin”, hard-refresh (Ctrl+Shift+R), then sign in again.`;
+      }
+      return "Permission denied. Hard-refresh (Ctrl+Shift+R) and enter the admin gate password again.";
     }
     return msg || "Database error";
   }
@@ -355,6 +825,9 @@
   function showApp() {
     gate.classList.add("hidden");
     appEl.classList.remove("hidden");
+    if (!state.notifications.length) {
+      state.notifications = loadStoredNotifications();
+    }
     renderNav();
     renderMain();
     subscribe();
@@ -365,31 +838,78 @@
     state.unsubs = [];
   }
 
+  function isAdminSignedIn() {
+    const email = auth.currentUser?.email?.trim().toLowerCase();
+    return email === CFG.adminEmail.trim().toLowerCase();
+  }
+
   async function ensureAdminInRtdb() {
     await db.ref(`config/adminEmails/${emailKey(CFG.adminEmail)}`).set(true);
+    const snap = await db.ref(`config/adminEmails/${emailKey(CFG.adminEmail)}`).get();
+    if (!snap.val()) {
+      const err = new Error("Could not register admin in database.");
+      err.code = "PERMISSION_DENIED";
+      throw err;
+    }
+  }
+
+  async function requestAdminSession(gatePassword) {
+    const res = await fetch("/api/admin/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gatePassword }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "Could not verify admin gate.");
+    }
+    adminSessionCreds = { email: data.adminEmail, password: data.adminPassword };
+    return adminSessionCreds;
   }
 
   async function firebaseBoot() {
-    try {
-      if (!auth.currentUser) {
-        await auth.signInWithEmailAndPassword(CFG.adminEmail, CFG.adminPassword);
+    if (auth.currentUser && !isAdminSignedIn()) {
+      await auth.signOut();
+    }
+    if (!isAdminSignedIn()) {
+      if (!adminSessionCreds) {
+        const err = new Error("Admin session expired. Enter the gate password again.");
+        err.code = "AUTH_REQUIRED";
+        throw err;
       }
-    } catch (e) {
-      if (!auth.currentUser) throw e;
+      await auth.signInWithEmailAndPassword(adminSessionCreds.email, adminSessionCreds.password);
     }
     await ensureAdminInRtdb();
+    await db.ref("users").limitToFirst(1).get();
   }
 
   function gateOk() {
     try { return sessionStorage.getItem(SESSION_KEY) === "1"; } catch { return false; }
   }
 
-  function setGateOk() {
-    try { sessionStorage.setItem(SESSION_KEY, "1"); } catch { /* ignore */ }
+  function setGateOk(password) {
+    gatePasswordMemory = password || "";
+    try {
+      sessionStorage.setItem(SESSION_KEY, "1");
+      if (password) sessionStorage.setItem("snowbear_admin_gate_pw", password);
+    } catch { /* ignore */ }
+  }
+
+  function getGatePassword() {
+    if (gatePasswordMemory) return gatePasswordMemory;
+    try {
+      return sessionStorage.getItem("snowbear_admin_gate_pw") || "";
+    } catch {
+      return "";
+    }
   }
 
   function clearGate() {
-    try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+    gatePasswordMemory = "";
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem("snowbear_admin_gate_pw");
+    } catch { /* ignore */ }
   }
 
   gateBtn.addEventListener("click", tryGate);
@@ -397,16 +917,18 @@
 
   async function tryGate() {
     gateError.textContent = "";
-    if (gatePassword.value !== CFG.gatePassword) {
-      gateError.textContent = "Wrong password.";
+    if (!gatePassword.value.trim()) {
+      gateError.textContent = "Enter the admin gate password.";
       return;
     }
     gateBtn.disabled = true;
     gateBtn.textContent = "Connecting…";
     try {
-      setGateOk();
+      await requestAdminSession(gatePassword.value);
+      setGateOk(gatePassword.value);
       await firebaseBoot();
       showApp();
+      maybeRunScheduledHealthCheck();
     } catch (e) {
       clearGate();
       gateError.textContent = dbError(e);
@@ -419,6 +941,7 @@
   document.getElementById("leave-btn").addEventListener("click", async () => {
     clearSubs();
     clearGate();
+    adminSessionCreds = null;
     await auth.signOut();
     gatePassword.value = "";
     showGate("");
@@ -431,10 +954,112 @@
     try {
       await firebaseBoot();
       showApp();
-    } catch {
+      maybeRunScheduledHealthCheck();
+    } catch (e) {
       clearGate();
-      showGate("");
+      showGate(dbError(e));
     }
+  }
+
+  function resolveClientHealthSlot() {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return "morning";
+    if (hour >= 12 && hour < 18) return "midday";
+    return "night";
+  }
+
+  function healthSlotLabel(slot) {
+    if (slot === "morning") return "Morning";
+    if (slot === "midday") return "Midday";
+    return "Night";
+  }
+
+  function needsScheduledHealthRun() {
+    const slot = resolveClientHealthSlot();
+    const health = state.apiHealth;
+    if (!health || !health.lastRunAt) return true;
+    if (health.slot !== slot) return true;
+    return Date.now() - health.lastRunAt > 4 * 60 * 60 * 1000;
+  }
+
+  function healthInactiveCount() {
+    const h = state.apiHealth;
+    if (!h) return 0;
+    let n = 0;
+    if (h.website?.status === "inactive") n += 1;
+    if (h.extension?.status === "inactive") n += 1;
+    n += (h.keys || []).filter((k) => k.status === "inactive").length;
+    return n;
+  }
+
+  async function runHealthCheck(manual) {
+    const gatePassword = getGatePassword();
+    if (!gatePassword) {
+      state.healthError = "Re-enter the admin gate password to run health checks.";
+      if (manual) alert(state.healthError);
+      renderMain();
+      return;
+    }
+    state.healthRunning = true;
+    state.healthError = "";
+    renderMain();
+    try {
+      const res = await fetch("/api/admin/health-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gatePassword,
+          slot: resolveClientHealthSlot(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Health check failed.");
+      }
+      state.apiHealth = data.health || null;
+      if (data.health?.summary) {
+        const inactive = healthInactiveCount();
+        if (inactive > 0) {
+          pushNotification(
+            "API health alert",
+            `${inactive} inactive check(s) in ${healthSlotLabel(data.health.slot)} run`,
+            "order"
+          );
+        }
+      }
+    } catch (e) {
+      state.healthError = dbError(e);
+      if (manual) alert(state.healthError);
+    } finally {
+      state.healthRunning = false;
+      renderMain();
+    }
+  }
+
+  function maybeRunScheduledHealthCheck() {
+    if (state.healthRunning || !needsScheduledHealthRun()) return;
+    runHealthCheck(false);
+  }
+
+  function openHealthErrorModal(title, error, extra) {
+    const body = [
+      `<p class="health-modal-title">${esc(title)}</p>`,
+      `<pre class="health-modal-error">${esc(error || "Unknown error")}</pre>`,
+      extra ? `<p class="meta">${esc(extra)}</p>` : "",
+    ].join("");
+    modalRoot.innerHTML = `<div class="modal-backdrop" id="health-error-modal">
+      <div class="modal-card health-modal">
+        <h3>Health check error</h3>
+        ${body}
+        <button type="button" class="btn btn-primary" id="health-modal-close">Close</button>
+      </div>
+    </div>`;
+    document.getElementById("health-modal-close").onclick = () => {
+      modalRoot.innerHTML = "";
+    };
+    document.getElementById("health-error-modal").onclick = (e) => {
+      if (e.target.id === "health-error-modal") modalRoot.innerHTML = "";
+    };
   }
 
   function scanUsers(snap) {
@@ -516,6 +1141,7 @@
     await db.ref().update(updates);
     try {
       await db.ref("config/bulkActivateV1").set(now);
+      await db.ref("config/creditsRevision").set(now);
     } catch (_) { /* optional marker — do not fail the reset */ }
     if (!silent) {
       pushNotification("All users activated", `${users.length} users now have Free plan with 10 credits`, "info");
@@ -602,6 +1228,15 @@
       state.instructions = snap.val() || defaultPayments();
       renderMain();
     }));
+    state.unsubs.push(db.ref("config/pricing").on("value", (snap) => {
+      state.pricing = snap.val() || { polarMonthly: 0.99, polarYearly: 9.50, unlimitedMonthly: 9.99, unlimitedYearly: 95.88 };
+      renderMain();
+    }));
+    state.unsubs.push(db.ref("config/apiHealth").on("value", (snap) => {
+      state.apiHealth = snap.val() || null;
+      renderNav();
+      renderMain();
+    }));
   }
 
   function renderNav() {
@@ -614,8 +1249,12 @@
         const badge =
           t.id === "orders" && pending
             ? `<span class="nav-badge">${pending}</span>`
+            : t.id === "notifications" && state.notifications.length
+              ? `<span class="nav-badge">${state.notifications.length}</span>`
             : t.id === "users" && state.stats.total
               ? `<span class="nav-badge">${state.stats.total}</span>`
+              : t.id === "apihealth" && healthInactiveCount()
+                ? `<span class="nav-badge nav-badge--warn">${healthInactiveCount()}</span>`
               : "";
         return `<button type="button" class="nav-btn ${state.tab === t.id ? "active" : ""}" data-tab="${t.id}">${ICONS[t.icon] || ""}<span>${t.label}</span>${badge}</button>`;
       }).join("");
@@ -657,11 +1296,9 @@
     const bell = document.getElementById("topbar-bell");
     if (bell) {
       bell.onclick = () => {
-        if (state.tab !== "overview") {
-          state.tab = "overview";
-          renderNav();
-          renderMain();
-        }
+        state.tab = "notifications";
+        renderNav();
+        renderMain();
       };
     }
   }
@@ -694,31 +1331,41 @@
         <div class="notify-list">
           ${items || '<div class="notify-empty">No notifications yet</div>'}
         </div>
-        ${unread ? '<button type="button" class="notify-clear" id="notify-clear">Clear all notifications</button>' : ""}
+        ${unread ? '<button type="button" class="notify-clear" id="notify-view-all">View all notifications</button>' : ""}
+        ${unread ? '<button type="button" class="notify-clear" id="notify-clear">Clear all</button>' : ""}
       </div>
       <div class="support-card">
         <p>Need help with an order or account migration? Our team is available 24/7.</p>
         <a class="btn" href="mailto:${esc(CFG.adminEmail)}">Open Tickets ↗</a>
       </div>`;
-    const clearBtn = document.getElementById("notify-clear");
-    if (clearBtn) {
-      clearBtn.onclick = () => {
-        state.notifications = [];
-        renderNotificationUi();
-        renderTopbar();
+    const viewAllBtn = document.getElementById("notify-view-all");
+    if (viewAllBtn) {
+      viewAllBtn.onclick = () => {
+        state.tab = "notifications";
+        renderNav();
+        renderMain();
       };
     }
+    const clearBtn = document.getElementById("notify-clear");
+    if (clearBtn) clearBtn.onclick = () => clearAllNotifications();
   }
 
   function renderMain() {
     renderTopbar();
+    if (state.tab !== "overview") destroyOverviewCharts();
     if (state.tab === "overview") main.innerHTML = renderOverview();
     else if (state.tab === "orders") main.innerHTML = renderOrders();
     else if (state.tab === "promos") main.innerHTML = renderPromos();
     else if (state.tab === "payments") main.innerHTML = renderPayments();
+    else if (state.tab === "pricing") main.innerHTML = renderPricing();
     else if (state.tab === "users") main.innerHTML = renderUsers();
+    else if (state.tab === "notifications") main.innerHTML = renderNotifications();
+    else if (state.tab === "apihealth") main.innerHTML = renderApiHealth();
     renderRightPanel();
     bindEvents();
+    if (state.tab === "overview") {
+      requestAnimationFrame(() => initOverviewCharts());
+    }
   }
 
   function orderMenuHtml(order) {
@@ -729,13 +1376,53 @@
     if (order.status === "pending") {
       items.push(`<button type="button" data-approve="${esc(order.id)}">Approve</button>`);
       items.push(`<button type="button" class="danger" data-reject="${esc(order.id)}">Reject</button>`);
-    } else {
-      items.push(`<button type="button" data-goto-orders="1">View in Orders</button>`);
     }
+    items.push(`<button type="button" class="danger" data-delete-order="${esc(order.id)}">Delete order</button>`);
     return `<div class="menu-wrap">
       <button type="button" class="menu-btn" data-toggle-menu="${esc(order.id)}">⋮</button>
       <div class="menu-drop hidden" id="menu-${esc(order.id)}">${items.join("")}</div>
     </div>`;
+  }
+
+  function notificationIcon(kind) {
+    if (kind === "order") return ICONS.bag;
+    if (kind === "user") return ICONS.users;
+    if (kind === "plan" || kind === "ok") return ICONS.promos;
+    return ICONS.bell;
+  }
+
+  function renderNotifications() {
+    const filter = state.notificationFilter.trim().toLowerCase();
+    const items = state.notifications.filter((n) => {
+      if (!filter) return true;
+      return `${n.title} ${n.body}`.toLowerCase().includes(filter);
+    });
+    const list = items.length
+      ? items.map((n) => `<div class="notify-item notify-item-full">
+          <div class="notify-icon">${notificationIcon(n.kind)}</div>
+          <div class="notify-body">
+            <strong>${esc(n.title)}</strong>
+            <p>${esc(n.body)}</p>
+            <div class="notify-time">${new Date(n.at).toLocaleString()} · ${formatRelativeTime(n.at)}</div>
+          </div>
+          <span class="notify-kind-pill">${esc(n.kind || "info")}</span>
+        </div>`).join("")
+      : `<div class="notify-empty">${filter ? "No notifications match your search." : "No notifications yet. New orders and sign-ups will appear here."}</div>`;
+    return `
+      <div class="toolbar panel-card" style="margin-bottom:.85rem">
+        <div class="search-field">
+          ${ICONS.search}
+          <input id="notification-search" type="search" placeholder="Search notifications…" value="${esc(state.notificationFilter)}" />
+        </div>
+        <button type="button" id="clear-notifications" class="btn btn-outline" style="width:auto" ${state.notifications.length ? "" : "disabled"}>Clear all</button>
+      </div>
+      <div class="panel-card">
+        <div class="panel-head">
+          <h2>All notifications</h2>
+          <span class="meta">${items.length} of ${state.notifications.length}</span>
+        </div>
+        <div class="notify-list notify-list-full">${list}</div>
+      </div>`;
   }
 
   function renderOverview() {
@@ -779,7 +1466,10 @@
         }).join("")}</tbody></table>`
       : '<div class="empty">No users yet.</div>';
 
+    const healthSummary = renderHealthSummaryCard();
+
     return `
+    ${healthSummary}
     <div class="stats">
       <div class="stat-card">
         <div class="stat-label">Total Users</div>
@@ -799,6 +1489,7 @@
         ${pending ? '<div class="stat-hint review">needs review</div>' : ""}
       </div>
     </div>
+    ${renderAnalyticsSection()}
     <div class="panel-card">
       <div class="panel-head">
         <h2>Recent Orders</h2>
@@ -809,6 +1500,104 @@
     <div class="panel-card">
       <div class="panel-head"><h2>Recently Active Users</h2></div>
       ${usersTable}
+    </div>`;
+  }
+
+  function healthStatusBadge(status) {
+    if (status === "active") {
+      return '<span class="health-pill health-pill--active">Active</span>';
+    }
+    return '<span class="health-pill health-pill--inactive">Inactive</span>';
+  }
+
+  function renderHealthSummaryCard() {
+    const h = state.apiHealth;
+    if (!h) {
+      return `<div class="panel-card health-summary">
+        <div class="panel-head">
+          <h2>API Health</h2>
+          <button type="button" class="panel-link" data-tab-link="apihealth">Open</button>
+        </div>
+        <p class="empty">No health check yet. Open API Health to run the first check.</p>
+      </div>`;
+    }
+    const allOk = h.summary?.allActive;
+    const when = h.lastRunAt ? new Date(h.lastRunAt).toLocaleString() : "—";
+    return `<div class="panel-card health-summary ${allOk ? "" : "warn"}">
+      <div class="panel-head">
+        <h2>API Health · ${esc(healthSlotLabel(h.slot))}</h2>
+        <button type="button" class="panel-link" data-tab-link="apihealth">Details</button>
+      </div>
+      <div class="health-summary-row">
+        ${healthStatusBadge(allOk ? "active" : "inactive")}
+        <span class="meta">${h.summary?.activeKeys || 0}/${h.summary?.totalKeys || 0} keys active · ${esc(when)}</span>
+      </div>
+    </div>`;
+  }
+
+  function renderApiHealth() {
+    const h = state.apiHealth;
+    const slot = resolveClientHealthSlot();
+    const running = state.healthRunning;
+
+    if (!h && !running) {
+      return `<div class="panel-card">
+        <div class="panel-head"><h2>API Health Monitor</h2></div>
+        <p class="meta">Automatic checks run 3× daily — morning, midday, and night (server cron). Each Groq key is tested individually. User requests rotate across keys automatically.</p>
+        ${state.healthError ? `<div class="orders-error">${esc(state.healthError)}</div>` : ""}
+        <button type="button" class="btn btn-primary" id="run-health-check">Run health check now</button>
+      </div>`;
+    }
+
+    if (running) {
+      return `<div class="panel-card">
+        <div class="panel-head"><h2>API Health Monitor</h2></div>
+        <p class="health-running">Running checks… testing each API key one by one.</p>
+      </div>`;
+    }
+
+    const when = h.lastRunAt ? new Date(h.lastRunAt).toLocaleString() : "—";
+    const keyRows = (h.keys || [])
+      .map(
+        (k) => `<tr class="health-row ${k.status === "inactive" ? "health-row--bad" : ""}" data-health-key="${esc(k.id)}" tabindex="0">
+        <td><code>${esc(k.masked)}</code></td>
+        <td>${healthStatusBadge(k.status)}</td>
+        <td>${k.latencyMs}ms</td>
+        <td class="meta">${k.sample ? esc(k.sample) : "—"}</td>
+      </tr>`
+      )
+      .join("");
+
+    return `
+    <div class="panel-card">
+      <div class="panel-head">
+        <h2>API Health Monitor</h2>
+        <button type="button" class="btn btn-outline btn-sm" id="run-health-check">Run now</button>
+      </div>
+      <p class="meta">Last run: <strong>${esc(when)}</strong> · Slot: <strong>${esc(healthSlotLabel(h.slot))}</strong> · Next auto slot: <strong>${esc(healthSlotLabel(slot))}</strong></p>
+      ${state.healthError ? `<div class="orders-error">${esc(state.healthError)}</div>` : ""}
+      <div class="health-service-grid">
+        <div class="health-service ${h.website?.status === "inactive" ? "health-service--bad" : ""}" data-health-service="website" tabindex="0">
+          <div class="health-service-label">Website API</div>
+          <div>${healthStatusBadge(h.website?.status)}</div>
+          <div class="meta">${esc(h.website?.endpoint || "/api/grammar")} · ${h.website?.latencyMs || 0}ms</div>
+        </div>
+        <div class="health-service ${h.extension?.status === "inactive" ? "health-service--bad" : ""}" data-health-service="extension" tabindex="0">
+          <div class="health-service-label">Extension path</div>
+          <div>${healthStatusBadge(h.extension?.status)}</div>
+          <div class="meta">${esc(h.extension?.endpoint || "website API")} · ${h.extension?.latencyMs || 0}ms</div>
+        </div>
+      </div>
+      <p class="meta" style="margin-top:12px">Click any <strong>Inactive</strong> row to see the error details.</p>
+    </div>
+    <div class="panel-card">
+      <div class="panel-head">
+        <h2>Groq API Keys (${h.summary?.activeKeys || 0}/${h.summary?.totalKeys || 0} active)</h2>
+      </div>
+      <table class="data-table health-table">
+        <thead><tr><th>Key</th><th>Status</th><th>Latency</th><th>Sample</th></tr></thead>
+        <tbody>${keyRows || '<tr><td colspan="4" class="empty">No keys configured</td></tr>'}</tbody>
+      </table>
     </div>`;
   }
 
@@ -836,11 +1625,12 @@
           <td class="meta">${payer}${receipt}${typeLabel}${pay}<br>${when}${o.paymentNote ? " · ref: " + esc(o.paymentNote) : ""}</td>
           <td>${formatMoney(o.amountUsd)}</td>
           <td>${orderStatusBadge(o.status)}</td>
-          <td>
+          <td class="cell-actions">
             ${o.status === "pending"
               ? `<button class="icon-btn ok" data-approve="${o.id}" title="Approve">✓</button>
                  <button class="icon-btn bad" data-reject="${o.id}" title="Reject">✕</button>`
-              : orderMenuHtml(o)}
+              : ""}
+            ${orderMenuHtml(o)}
           </td>
         </tr>`;
       }).join("")}</tbody>
@@ -872,15 +1662,45 @@
       <button id="save-payments" class="btn btn-primary btn-sm">Save</button></div>`;
   }
 
+  function renderPricing() {
+    return `<div class="panel-card">
+      <div style="margin-bottom:1rem">
+        <label class="meta">Polar Monthly ($)</label>
+        <input id="pricing-polar-monthly" type="number" step="0.01" value="${state.pricing.polarMonthly}" />
+      </div>
+      <div style="margin-bottom:1rem">
+        <label class="meta">Polar Yearly ($)</label>
+        <input id="pricing-polar-yearly" type="number" step="0.01" value="${state.pricing.polarYearly}" />
+      </div>
+      <div style="margin-bottom:1rem">
+        <label class="meta">Unlimited Monthly ($)</label>
+        <input id="pricing-unlimited-monthly" type="number" step="0.01" value="${state.pricing.unlimitedMonthly}" />
+      </div>
+      <div style="margin-bottom:1rem">
+        <label class="meta">Unlimited Yearly ($)</label>
+        <input id="pricing-unlimited-yearly" type="number" step="0.01" value="${state.pricing.unlimitedYearly}" />
+      </div>
+      <button id="save-pricing" class="btn btn-primary btn-sm">Save Pricing</button>
+    </div>`;
+  }
+
   function renderUsers() {
     const orphans = state.users.filter(isOrphanUser);
+    const filteredUsers = filterUsersBySearch(state.users, state.userSearchQuery);
     const toolbar = `<div class="toolbar panel-card" style="margin-bottom:.85rem">
-      <div><p class="meta" style="margin:0">Free=10 · Polar=100 · Unlimited=∞ credits/mo${orphans.length ? ` · <span style="color:#b45309">${orphans.length} incomplete (no email)</span>` : ""}</p></div>
+      <div class="search-field search-field-grow">
+        ${ICONS.search}
+        <input id="user-search" type="search" placeholder="Search by email or UID…" value="${esc(state.userSearchQuery)}" />
+      </div>
+      <div><p class="meta" style="margin:0">Free=10 · Polar=100 · Unlimited=∞${orphans.length ? ` · <span style="color:#b45309">${orphans.length} incomplete</span>` : ""}</p></div>
       <button type="button" id="repair-users" class="btn btn-outline" style="width:auto" ${state.users.length ? "" : "disabled"}>Repair records</button>
       <button type="button" id="remove-orphans" class="btn btn-outline" style="width:auto" ${orphans.length ? "" : "disabled"}>Remove incomplete</button>
       <button type="button" id="activate-all" class="btn btn-primary" style="width:auto" ${state.users.length ? "" : "disabled"}>Reset all → 10 credits</button>
     </div>`;
-    const body = state.users.length ? `<table class="data-table"><thead><tr><th>Email</th><th>Plan</th><th>Remaining</th><th>Used</th><th>Activity</th><th></th></tr></thead><tbody>${state.users.map((u) => {
+    const countMeta = state.userSearchQuery.trim()
+      ? `<p class="meta" style="margin:0 0 .75rem">Showing ${filteredUsers.length} of ${state.users.length} users</p>`
+      : "";
+    const body = filteredUsers.length ? `<table class="data-table"><thead><tr><th>Email</th><th>Plan</th><th>Remaining</th><th>Used</th><th>Activity</th><th></th></tr></thead><tbody>${filteredUsers.map((u) => {
       const used = u.credits?.used || 0;
       const orphan = isOrphanUser(u);
       const expiry = planExpiryMeta(u);
@@ -898,11 +1718,11 @@
           ${orphan ? `<button class="btn btn-outline btn-sm" data-delete-orphan="${u.uid}" style="color:#dc2626;margin-left:.25rem">Delete</button>` : ""}
         </td>
       </tr>`;
-    }).join("")}</tbody></table>` : `<div class="empty">No users yet.</div>`;
+    }).join("")}</tbody></table>` : `<div class="empty">${state.userSearchQuery.trim() ? "No users match that email." : "No users yet."}</div>`;
     const err = state.usersError
       ? `<div class="orders-error"><strong>Could not load users:</strong> ${esc(state.usersError)}</div>`
       : "";
-    return err + toolbar + `<div class="panel-card">${body}</div>`;
+    return err + toolbar + `<div class="panel-card">${countMeta}${body}</div>`;
   }
 
   function bindEvents() {
@@ -937,10 +1757,40 @@
       closeAllMenus();
       reviewOrder(b.dataset.reject, "rejected");
     }));
+    main.querySelectorAll("[data-delete-order]").forEach((b) => (b.onclick = () => {
+      closeAllMenus();
+      deleteOrder(b.dataset.deleteOrder);
+    }));
+    const userSearch = document.getElementById("user-search");
+    if (userSearch) {
+      userSearch.oninput = () => {
+        state.userSearchQuery = userSearch.value;
+        const mainEl = document.getElementById("main");
+        if (mainEl && state.tab === "users") {
+          mainEl.innerHTML = renderUsers();
+          bindEvents();
+        }
+      };
+    }
+    const notificationSearch = document.getElementById("notification-search");
+    if (notificationSearch) {
+      notificationSearch.oninput = () => {
+        state.notificationFilter = notificationSearch.value;
+        const mainEl = document.getElementById("main");
+        if (mainEl && state.tab === "notifications") {
+          mainEl.innerHTML = renderNotifications();
+          bindEvents();
+        }
+      };
+    }
+    const clearNotifications = document.getElementById("clear-notifications");
+    if (clearNotifications) clearNotifications.onclick = () => clearAllNotifications();
     const gen = document.getElementById("gen-promo");
     if (gen) gen.onclick = createPromo;
     const save = document.getElementById("save-payments");
     if (save) save.onclick = savePayments;
+    const savePricingBtn = document.getElementById("save-pricing");
+    if (savePricingBtn) savePricingBtn.onclick = savePricing;
     main.querySelectorAll("[data-manage]").forEach((b) => (b.onclick = () => openUserModal(b.dataset.manage)));
     main.querySelectorAll("[data-delete-promo]").forEach((b) => (b.onclick = () => deletePromo(b.dataset.deletePromo, b.dataset.promoLabel)));
     const repairUsers = document.getElementById("repair-users");
@@ -951,6 +1801,73 @@
       b.onclick = () => {
         const u = state.users.find((x) => x.uid === b.dataset.deleteOrphan);
         if (u) removeOrphanUsers([u]);
+      };
+    });
+
+    main.querySelectorAll("[data-revenue-range]").forEach((btn) => {
+      btn.onclick = () => {
+        const range = btn.dataset.revenueRange;
+        if (!range || range === state.revenueRange) return;
+        state.revenueRange = range;
+        main.querySelectorAll("[data-revenue-range]").forEach((other) => {
+          const active = other === btn;
+          other.setAttribute("aria-pressed", String(active));
+          other.classList.toggle("active", active);
+        });
+        const activeRevenue =
+          range === "12m" ? buildMonthlyRevenue(12) : buildMonthlyRevenue(6);
+        if (state.charts.revenueLine) {
+          state.charts.revenueLine.data.labels = activeRevenue.labels;
+          state.charts.revenueLine.data.datasets[0].data = activeRevenue.values;
+          state.charts.revenueLine.update();
+        }
+        const tableBody = document.querySelector("#revenue-line-chart-table tbody");
+        if (tableBody) {
+          tableBody.innerHTML = srTableRows(activeRevenue.labels, activeRevenue.values);
+        }
+      };
+    });
+
+    const runHealth = document.getElementById("run-health-check");
+    if (runHealth) runHealth.onclick = () => runHealthCheck(true);
+
+    main.querySelectorAll("[data-health-key]").forEach((row) => {
+      const open = () => {
+        const id = row.dataset.healthKey;
+        const key = state.apiHealth?.keys?.find((k) => k.id === id);
+        if (!key || key.status === "active") return;
+        openHealthErrorModal(
+          `Groq key ${key.masked}`,
+          key.error || "Unknown error",
+          `Tested ${key.testedAt ? new Date(key.testedAt).toLocaleString() : "—"} · ${key.latencyMs}ms`
+        );
+      };
+      row.onclick = open;
+      row.onkeydown = (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      };
+    });
+
+    main.querySelectorAll("[data-health-service]").forEach((card) => {
+      const open = () => {
+        const kind = card.dataset.healthService;
+        const row = kind === "website" ? state.apiHealth?.website : state.apiHealth?.extension;
+        if (!row || row.status === "active") return;
+        openHealthErrorModal(
+          kind === "website" ? "Website API" : "Extension path",
+          row.error || "Unknown error",
+          `${row.endpoint || ""} · ${row.latencyMs || 0}ms`
+        );
+      };
+      card.onclick = open;
+      card.onkeydown = (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
       };
     });
 
@@ -969,6 +1886,19 @@
         activateAll.textContent = "Reset all → 10 credits";
       }
     };
+  }
+
+  async function deleteOrder(id) {
+    const order = state.orders.find((o) => o.id === id);
+    if (!order) return alert("Order not found");
+    const label = `${order.email || "User"} · ${orderProductLabel(order)} · ${formatMoney(order.amountUsd || 0)}`;
+    if (!confirm(`Delete this order permanently?\n\n${label}\n\nThis cannot be undone.`)) return;
+    try {
+      await db.ref(`orders/${id}`).remove();
+      pushNotification("Order deleted", label, "order");
+    } catch (e) {
+      alert(dbError(e));
+    }
   }
 
   async function reviewOrder(id, status, planApproval) {
@@ -1040,9 +1970,11 @@
     if (plan === "free") {
       patch.planExpiresAt = null;
       patch.planBillingCycle = null;
+      patch.planActivatedAt = null;
     } else if (billingCycle === "monthly" || billingCycle === "yearly") {
-      patch.planExpiresAt = now + planDurationMs(billingCycle);
+      patch.planExpiresAt = planExpiresAtFromBilling(billingCycle, now);
       patch.planBillingCycle = billingCycle;
+      patch.planActivatedAt = now;
     } else {
       patch.planExpiresAt = null;
       patch.planBillingCycle = null;
@@ -1065,8 +1997,8 @@
       </select>
       <label class="meta" style="display:block;margin-top:.75rem">Subscription length</label>
       <select id="a-cycle">
-        <option value="monthly">30 days (monthly)</option>
-        <option value="yearly">1 year (yearly)</option>
+        <option value="monthly">1 month (same date &amp; time)</option>
+        <option value="yearly">1 year (same date &amp; time)</option>
       </select>
       <p id="a-hint" class="meta" style="margin-top:.5rem"></p>
       <p id="a-msg" class="meta"></p>
@@ -1080,8 +2012,8 @@
     const hint = document.getElementById("a-hint");
     const syncHint = () => {
       if (!hint || !planSel || !cycleSel) return;
-      const ends = new Date(Date.now() + planDurationMs(cycleSel.value)).toLocaleString();
-      hint.textContent = `${planAllowanceLabel(planSel.value)} · active for ${planCycleLabel(cycleSel.value)} · ends ${ends}`;
+      const ends = new Date(planExpiresAtFromBilling(cycleSel.value)).toLocaleString();
+      hint.textContent = `${planAllowanceLabel(planSel.value)} · active for ${planCycleLabel(cycleSel.value)} · expires ${ends}`;
     };
     planSel.value = defaultPlan;
     cycleSel.value = defaultCycle;
@@ -1166,6 +2098,24 @@
     try {
       await db.ref("config/paymentInstructions").set(next);
       alert("Saved.");
+    } catch (e) {
+      alert(dbError(e));
+    }
+  }
+
+  async function savePricing() {
+    const polarMonthly = parseFloat(document.getElementById("pricing-polar-monthly").value);
+    const polarYearly = parseFloat(document.getElementById("pricing-polar-yearly").value);
+    const unlimitedMonthly = parseFloat(document.getElementById("pricing-unlimited-monthly").value);
+    const unlimitedYearly = parseFloat(document.getElementById("pricing-unlimited-yearly").value);
+
+    if (isNaN(polarMonthly) || isNaN(polarYearly) || isNaN(unlimitedMonthly) || isNaN(unlimitedYearly)) {
+      return alert("Invalid numeric input.");
+    }
+
+    try {
+      await db.ref("config/pricing").set({ polarMonthly, polarYearly, unlimitedMonthly, unlimitedYearly });
+      alert("Pricing saved successfully.");
     } catch (e) {
       alert(dbError(e));
     }

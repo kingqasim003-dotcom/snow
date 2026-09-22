@@ -1,3 +1,10 @@
+function decodeB64(envKey: string, plainKey: string): string {
+  if (process.env[plainKey]?.trim()) return process.env[plainKey]!.trim();
+  const encoded = process.env[envKey]?.trim();
+  if (!encoded) return "";
+  return Buffer.from(encoded, "base64").toString("utf8");
+}
+
 export function serverConfig() {
   return {
     apiKey:
@@ -7,14 +14,14 @@ export function serverConfig() {
     databaseUrl: (
       process.env.FIREBASE_DATABASE_URL ||
       process.env.VITE_FIREBASE_DATABASE_URL ||
-      ""
+      "https://snowbear-online-default-rtdb.asia-southeast1.firebasedatabase.app"
     ).replace(/\/$/, ""),
     adminEmail:
       process.env.ADMIN_EMAIL ||
       process.env.FIREBASE_ADMIN_EMAIL ||
       "snowqasimbear@gmail.com",
     adminPassword:
-      process.env.ADMIN_PASSWORD ||
+      decodeB64("ADMIN_PASSWORD_B64", "ADMIN_PASSWORD") ||
       process.env.FIREBASE_ADMIN_PASSWORD ||
       "",
   };
