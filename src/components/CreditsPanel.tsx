@@ -29,8 +29,8 @@ const PLAN_OPTIONS: Array<{
   icon: typeof Zap;
 }> = [
   { id: "free", name: "Free", credits: `${PLAN_ALLOWANCE.free}/mo`, price: "$0", icon: Zap },
-  { id: "pro", name: "Polar Pro", credits: `${PLAN_ALLOWANCE.polar}/mo`, price: "$4.99", icon: Zap },
-  { id: "unlimited", name: "Unlimited", credits: "∞", price: "$19.99", icon: Crown },
+  { id: "pro", name: "Polar", credits: `${PLAN_ALLOWANCE.polar}/mo`, price: "$0.99", icon: Zap },
+  { id: "unlimited", name: "Unlimited", credits: "∞", price: "$9.99", icon: Crown },
 ];
 
 export default function CreditsPanel({

@@ -40,8 +40,8 @@ const UNLIMITED_FEATURES = [
 export default function PricingSection({ user, setUser, showTitle = true }: PricingSectionProps) {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
 
-  const polarPrice = billingCycle === "monthly" ? "$4.99" : "$3.99";
-  const unlimitedPrice = billingCycle === "monthly" ? "$19.99" : "$15.99";
+  const polarPrice = billingCycle === "monthly" ? "$0.99" : "$9.50";
+  const unlimitedPrice = billingCycle === "monthly" ? "$9.99" : "$95.88";
 
   const applyFreePlan = () => {
     if (!user.id) return;
